@@ -5,9 +5,12 @@ from __future__ import annotations
 import shutil
 
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageOps, ImageStat
 
 from screenshot_masker.models import Box, Word
+
+# 平均輝度がこれ未満の画像は暗い背景（ダークテーマ）とみなして白黒を反転する
+DARK_MEAN_LUMINANCE_THRESHOLD = 128
 
 
 class OcrUnavailableError(Exception):
@@ -25,11 +28,23 @@ def is_tesseract_available(lang: str = "jpn+eng") -> bool:
     return set(lang.split("+")) <= installed
 
 
+def prepare_for_ocr(image: Image.Image) -> Image.Image:
+    """OCR 用に、明るい背景に暗い文字のグレースケール画像へ整える。
+
+    Tesseract は暗い背景の文字（ダークテーマ）で `_` などの細い記号を落としやすい。
+    寸法は変えないので、OCR の座標は元画像の座標のまま使える。
+    """
+    grayscale = image.convert("L")
+    if ImageStat.Stat(grayscale).mean[0] < DARK_MEAN_LUMINANCE_THRESHOLD:
+        grayscale = ImageOps.invert(grayscale)
+    return ImageOps.autocontrast(grayscale)
+
+
 def run_ocr(image: Image.Image, lang: str) -> list[Word]:
     """画像を OCR し、空でない単語を Word のリストで返す。"""
     try:
         data = pytesseract.image_to_data(
-            image.convert("RGB"), lang=lang, output_type=pytesseract.Output.DICT
+            prepare_for_ocr(image), lang=lang, output_type=pytesseract.Output.DICT
         )
     except pytesseract.TesseractNotFoundError as error:
         raise OcrUnavailableError(
