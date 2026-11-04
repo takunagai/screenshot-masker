@@ -29,6 +29,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "N", "PTH"]
+# 日本語のコメント・文字列では全角括弧などを使うため許可する
+allowed-confusables = ["（", "）", "："]
 
 [tool.mypy]
 python_version = "3.12"
