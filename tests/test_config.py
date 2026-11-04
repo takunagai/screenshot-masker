@@ -96,3 +96,10 @@ def test_invalid_toml(tmp_path: Path) -> None:
 def test_missing_explicit_config(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="見つかりません"):
         load_config(tmp_path / "missing.toml")
+
+
+def test_example_config_is_valid() -> None:
+    example = Path(__file__).parent.parent / "screenshot-masker.example.toml"
+    config = load_config(example)
+    assert config.allowed_domains == ("zenn.dev", "note.com")
+    assert config.rules()[-1].kind == "project_code"

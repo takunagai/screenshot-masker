@@ -1,0 +1,26 @@
+# screenshot-masker の設定例。screenshot-masker.toml という名前でコピーして使う
+
+[ocr]
+# Tesseract の言語（tesseract --list-langs で確認）
+lang = "jpn+eng"
+
+[mask]
+# "blur"（ぼかし）か "fill"（塗りつぶし）
+method = "blur"
+# 文字の枠から四方に広げるピクセル数
+padding = 6
+# ぼかしの強さ。文字の高さの半分より小さい値は自動で引き上げる
+blur_radius = 12
+# 塗りつぶしの色
+fill_color = "#000000"
+
+[detect]
+# 無効にする種類: claude, url, email, ipv4, home_path, token, または custom の name
+disabled = []
+# url で残してよいドメイン（サブドメインも含む）
+allowed_domains = ["zenn.dev", "note.com"]
+
+# 任意の正規表現を追加する（Python の re 構文）
+[[detect.custom]]
+name = "project_code"
+pattern = 'PRJ-\d{4}'
