@@ -50,11 +50,10 @@ def parse_units(value: object, where: str) -> Units:
 
 
 def _numbers(value: object, count: int, where: str, name: str) -> list[float]:
-    is_sequence = isinstance(value, list | tuple)
-    if not is_sequence or len(value) != count:  # type: ignore[arg-type]
+    if not isinstance(value, list | tuple) or len(value) != count:
         raise SpecError(f"{where}: {name} は {count} 個の数値の配列で指定してください")
     numbers: list[float] = []
-    for item in value:  # type: ignore[union-attr]
+    for item in value:
         if isinstance(item, bool) or not isinstance(item, int | float):
             raise SpecError(f"{where}: {name} に数値以外が含まれています（{item!r}）")
         numbers.append(float(item))

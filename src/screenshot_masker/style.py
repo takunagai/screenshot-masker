@@ -83,9 +83,7 @@ def merge_style(base: Style, override: object, where: str) -> Style:
         for option in value:
             if option not in known:
                 allowed = ", ".join(known)
-                raise SpecError(
-                    f"{where}: {key} に不明な項目 {option!r}（使える項目: {allowed}）"
-                )
+                raise SpecError(f"{where}: {key} に不明な項目 {option!r}（使える項目: {allowed}）")
         merged[key] = {**merged[key], **value}
     return merged
 

@@ -163,7 +163,9 @@ def _composite(
 # ---- 各注釈 ---------------------------------------------------------------
 
 
-def draw_rect(image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext) -> None:
+def draw_rect(
+    image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext
+) -> None:
     """枠。線は box の外側に描き、囲んだ中身を隠さない。"""
     box = _box(op, context)
     color = _color(options["color"], op.where, "color")
@@ -184,7 +186,9 @@ def draw_rect(image: Image.Image, op: Operation, options: dict[str, Any], contex
     _composite(image, outer, paint)
 
 
-def draw_badge(image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext) -> None:
+def draw_badge(
+    image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext
+) -> None:
     """番号バッジ。number を省くと 1, 2, 3… と自動で振る。"""
     center_x, center_y = _point(op, context, "at")
     if "number" in op.item:
@@ -216,16 +220,18 @@ def draw_badge(image: Image.Image, op: Operation, options: dict[str, Any], conte
         cx, cy = to_layer(center_x, center_y)
         if outline > 0:
             r = outer_radius * factor
-            draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=outline_color)
+            draw.ellipse((cx - r, cy - r, cx + r - 1, cy + r - 1), fill=outline_color)
         r = radius * factor
-        draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=color)
+        draw.ellipse((cx - r, cy - r, cx + r - 1, cy + r - 1), fill=color)
         font = _font(context, font_size * factor)
         draw.text((cx, cy), text, fill=text_color, font=font, anchor="mm")
 
     _composite(image, bounds, paint)
 
 
-def draw_arrow(image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext) -> None:
+def draw_arrow(
+    image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext
+) -> None:
     """矢印。to の側に矢じりを付ける。"""
     start = _point(op, context, "from")
     end = _point(op, context, "to")
@@ -272,7 +278,9 @@ def draw_arrow(image: Image.Image, op: Operation, options: dict[str, Any], conte
     _composite(image, bounds, paint)
 
 
-def draw_label(image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext) -> None:
+def draw_label(
+    image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext
+) -> None:
     """背景つきの文字。at は背景の左上。改行（\\n）で複数行にできる。"""
     left, top = _point(op, context, "at")
     text = op.item["text"]
@@ -346,11 +354,15 @@ def draw_spotlight(
     image.alpha_composite(overlay)
 
 
-def apply_blur(image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext) -> None:
+def apply_blur(
+    image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext
+) -> None:
     blur_region(image, _box(op, context), _length(options, "radius", op, context, allow_zero=False))
 
 
-def apply_fill(image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext) -> None:
+def apply_fill(
+    image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext
+) -> None:
     fill_region(image, _box(op, context), _color(options["color"], op.where, "color"))
 
 
@@ -384,7 +396,10 @@ def render(source: Image.Image, spec: Spec, scale_override: float | None = None)
         font_path=resolve_font_path(spec.style["font"]),
     )
     for op in spec.operations:
-        options = {**spec.style[op.kind], **{k: v for k, v in op.item.items() if k in spec.style[op.kind]}}
+        options = {
+            **spec.style[op.kind],
+            **{k: v for k, v in op.item.items() if k in spec.style[op.kind]},
+        }
         RENDERERS[op.kind](image, op, options, context)
     output = image if has_alpha else image.convert("RGB")
     return RenderResult(image=output, scale=context.scale, warnings=context.warnings)

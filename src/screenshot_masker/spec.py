@@ -82,14 +82,15 @@ def _parse_items(
             raise SpecError(f"{where}: キーと値の組（マッピング）で書いてください")
         kind = raw.get("type")
         if kind not in allowed_types:
-            raise SpecError(f"{where}: type は {', '.join(allowed_types)} のいずれかです（指定値: {kind!r}）")
+            raise SpecError(
+                f"{where}: type は {', '.join(allowed_types)} のいずれかです（指定値: {kind!r}）"
+            )
         where = f"{where}({kind})"
         allowed_keys = {"type", "units", *GEOMETRY_KEYS[kind], *DEFAULT_STYLE[kind]}
         unknown = sorted(set(raw) - allowed_keys)
         if unknown:
-            raise SpecError(
-                f"{where}: 不明な項目 {', '.join(unknown)}（使える項目: {', '.join(sorted(allowed_keys))}）"
-            )
+            allowed = ", ".join(sorted(allowed_keys))
+            raise SpecError(f"{where}: 不明な項目 {', '.join(unknown)}（使える項目: {allowed}）")
         missing = [key for key in REQUIRED_KEYS[kind] if key not in raw]
         if missing:
             raise SpecError(f"{where}: 必須の項目 {', '.join(missing)} がありません")
@@ -107,9 +108,8 @@ def parse_spec(data: object, base_dir: Path, base_style: Style | None = None) ->
         raise SpecError("指示ファイルの最上位はキーと値の組（マッピング）で書いてください")
     unknown = sorted(set(data) - set(TOP_LEVEL_KEYS))
     if unknown:
-        raise SpecError(
-            f"指示ファイルに不明な項目 {', '.join(unknown)}（使える項目: {', '.join(TOP_LEVEL_KEYS)}）"
-        )
+        allowed = ", ".join(TOP_LEVEL_KEYS)
+        raise SpecError(f"指示ファイルに不明な項目 {', '.join(unknown)}（使える項目: {allowed}）")
     if "annotations" not in data and "masks" not in data:
         raise SpecError("指示ファイルに annotations も masks もありません")
 

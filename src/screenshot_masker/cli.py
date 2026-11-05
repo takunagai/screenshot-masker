@@ -1,6 +1,6 @@
 """コマンドラインの入口。
 
-    screenshot-masker annotate INPUT --spec SPEC [--style STYLE] [-o OUTPUT] [--scale N]
+screenshot-masker annotate INPUT --spec SPEC [--style STYLE] [-o OUTPUT] [--scale N]
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from .style import DEFAULT_STYLE, load_style_file
 
 EXIT_OK = 0
 EXIT_USER_ERROR = 2
+EXIT_UNEXPECTED_ERROR = 1
 
 
 def default_output_path(input_path: Path) -> Path:
@@ -33,7 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
-        "--debug", action="store_true", help="エラー時に開発者向けの詳細（トレースバック）を表示する"
+        "--debug",
+        action="store_true",
+        help="エラー時に開発者向けの詳細（トレースバック）を表示する",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
@@ -64,7 +67,9 @@ def _parse_scale_argument(value: str | None) -> float | None:
     try:
         number = float(value)
     except ValueError as error:
-        raise SpecError(f"--scale は auto か正の数値を指定してください（指定値: {value!r}）") from error
+        raise SpecError(
+            f"--scale は auto か正の数値を指定してください（指定値: {value!r}）"
+        ) from error
     return parse_scale(number, "--scale")
 
 
@@ -72,7 +77,9 @@ def run_annotate(args: argparse.Namespace) -> int:
     input_path: Path = args.input
     output_path: Path = args.output or default_output_path(input_path)
     if output_path.resolve() == input_path.resolve():
-        raise SpecError("出力先が元画像と同じです。元画像は上書きしません。-o で別のパスを指定してください")
+        raise SpecError(
+            "出力先が元画像と同じです。元画像は上書きしません。-o で別のパスを指定してください"
+        )
 
     base_style = load_style_file(args.style, DEFAULT_STYLE) if args.style else None
     spec = load_spec(args.spec, base_style)
@@ -111,6 +118,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.debug:
             traceback.print_exc()
         return EXIT_USER_ERROR
+    except Exception:
+        print(
+            "エラー: 予期しない問題で処理を中断しました。--debug を付けると詳細を表示します",
+            file=sys.stderr,
+        )
+        if args.debug:
+            traceback.print_exc()
+        return EXIT_UNEXPECTED_ERROR
     parser.error(f"不明なコマンド: {args.command}")
     return EXIT_USER_ERROR
 
