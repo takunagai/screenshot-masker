@@ -1,0 +1,12 @@
+# 架空の設定画面（examples/sample.png）に手順の注釈を付ける例
+style: style.yaml
+masks:
+  - {type: blur, box: [640, 120, 260, 36]}     # メールアドレス欄（架空）をぼかす
+  - {type: fill, box: [640, 180, 260, 36]}     # API キー欄（架空）を塗りつぶす
+annotations:
+  - {type: spotlight, box: [40, 100, 560, 160]}
+  - {type: rect, box: [40, 100, 560, 160]}
+  - {type: badge, at: [40, 100]}               # 1
+  - {type: arrow, from: [420, 360], to: [300, 270]}
+  - {type: label, at: [380, 365], text: "ここで「保存」を押します"}
+  - {type: badge, at: [0.95, 0.9], units: ratio}   # 2（割合で指定）

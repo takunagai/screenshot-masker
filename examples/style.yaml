@@ -1,0 +1,20 @@
+# 記事ごとの見た目をまとめるスタイル設定（論理ピクセルで書く。2 倍画像では自動で 2 倍になる）
+reference_width: 1600
+rect:
+  color: "#E5484D"
+  width: 4
+  radius: 6
+badge:
+  color: "#E5484D"
+  radius: 16
+  font_size: 18
+arrow:
+  color: "#E5484D"
+  width: 4
+  head_size: 18
+label:
+  background: "#1F2937E6"
+  text_color: "#FFFFFF"
+  font_size: 18
+spotlight:
+  opacity: 0.55
