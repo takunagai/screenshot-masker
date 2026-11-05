@@ -61,7 +61,9 @@ def decide_scale(image_width: int, reference_width: object, override: float | No
     is_number = isinstance(reference_width, int | float) and not isinstance(reference_width, bool)
     if not is_number or reference_width <= 0:  # type: ignore[operator]
         raise SpecError(f"reference_width は正の数値にしてください（指定値: {reference_width!r}）")
-    return float(max(1, round(image_width / reference_width)))  # type: ignore[operator]
+    # round() は 2.5 → 2 の偶数丸めになるため、0.5 を足して切り捨てる（普通の四捨五入）
+    ratio = image_width / reference_width  # type: ignore[operator]
+    return float(max(1, math.floor(ratio + 0.5)))
 
 
 def resolve_font_path(configured: object) -> str | None:

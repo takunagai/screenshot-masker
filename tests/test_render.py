@@ -7,6 +7,7 @@ from helpers import WHITE, changed_box, checker_image, is_close, pixel, run, whi
 from PIL import Image
 
 from screenshot_masker.errors import SpecError
+from screenshot_masker.render import decide_scale
 
 RED = (229, 72, 77)
 
@@ -225,3 +226,16 @@ def test_shapes_partly_outside_the_image_are_clipped() -> None:
         },
     )
     assert result.image.size == (100, 100)
+
+
+@pytest.mark.parametrize(
+    ("width", "expected"),
+    [(640, 1), (1920, 1), (2399, 1), (2400, 2), (2880, 2), (3999, 2), (4000, 3)],
+)
+def test_auto_scale_is_decided_from_image_width(width: int, expected: float) -> None:
+    assert decide_scale(width, 1600, None) == expected
+
+
+def test_reference_width_must_be_positive() -> None:
+    with pytest.raises(SpecError, match="reference_width"):
+        decide_scale(1000, 0, None)
