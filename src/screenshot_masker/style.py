@@ -13,7 +13,7 @@ from typing import Any
 
 import yaml
 
-from .errors import SpecError
+from screenshot_masker.errors import SpecError
 
 StyleOptions = dict[str, Any]
 Style = dict[str, Any]

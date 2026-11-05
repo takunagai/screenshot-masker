@@ -1,8 +1,10 @@
 __pycache__/
 *.pyc
 .venv/
-dist/
-.pytest_cache/
 .mypy_cache/
+.pytest_cache/
 .ruff_cache/
-*.annotated.png
+dist/
+/masked/
+/masked_preview/
+/annotated/

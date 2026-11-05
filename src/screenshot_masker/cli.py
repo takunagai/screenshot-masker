@@ -1,6 +1,8 @@
-"""コマンドラインの入口。
+"""screenshot-masker のコマンドライン入口。
 
-screenshot-masker annotate INPUT --spec SPEC [--style STYLE] [-o OUTPUT] [--scale N]
+終了コード: 検出あり 1 / 検出なし 0 / エラー 2
+
+最初の引数が annotate のときは、注釈のサブコマンド（annotate_cli）に処理を渡す。
 """
 
 from __future__ import annotations
@@ -8,126 +10,237 @@ from __future__ import annotations
 import argparse
 import sys
 import traceback
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
-from . import __version__
-from .errors import SpecError
-from .render import render
-from .spec import load_spec, parse_scale
-from .style import DEFAULT_STYLE, load_style_file
+from screenshot_masker.config import Config, ConfigError, load_config
+from screenshot_masker.detect import detect
+from screenshot_masker.mask import apply_mask, draw_preview
+from screenshot_masker.models import Detection, Word
+from screenshot_masker.ocr import OcrUnavailableError, run_ocr
 
-EXIT_OK = 0
-EXIT_USER_ERROR = 2
-EXIT_UNEXPECTED_ERROR = 1
+EXIT_NO_DETECTION = 0
+EXIT_DETECTED = 1
+EXIT_ERROR = 2
+
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
+JPEG_QUALITY = 95
+DEFAULT_OUTPUT_DIR = Path("masked")
+PREVIEW_DIR_SUFFIX = "_preview"
+ANNOTATE_COMMAND = "annotate"
+
+OcrFunction = Callable[[Image.Image, str], list[Word]]
 
 
-def default_output_path(input_path: Path) -> Path:
-    return input_path.with_name(f"{input_path.stem}.annotated{input_path.suffix}")
+class UsageError(Exception):
+    """入力や出力先の指定が正しくないとき。メッセージは利用者向け。"""
+
+
+@dataclass(frozen=True)
+class Job:
+    source: Path
+    output: Path
+    preview: Path | None
+
+
+def _is_within(path: Path, directory: Path) -> bool:
+    return path.resolve().is_relative_to(directory.resolve())
+
+
+def _iter_images(directory: Path, excluded: Sequence[Path]) -> list[Path]:
+    images = [
+        path
+        for path in directory.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in IMAGE_SUFFIXES
+        and not any(_is_within(path, folder) for folder in excluded)
+    ]
+    return sorted(images)
+
+
+def plan_jobs(
+    inputs: Sequence[Path], output_dir: Path, preview_dir: Path | None, *, is_dry_run: bool
+) -> list[Job]:
+    """入力から処理対象と出力先を決める。元画像を上書きする組み合わせは拒否する。"""
+    excluded = [output_dir] + ([preview_dir] if preview_dir is not None else [])
+    jobs: list[Job] = []
+    for source in inputs:
+        if source.is_dir():
+            for image_path in _iter_images(source, excluded):
+                relative = image_path.relative_to(source)
+                jobs.append(
+                    Job(
+                        image_path,
+                        output_dir / relative,
+                        preview_dir / relative.with_suffix(".png") if preview_dir else None,
+                    )
+                )
+        elif source.is_file():
+            if source.suffix.lower() not in IMAGE_SUFFIXES:
+                raise UsageError(f"対応していない形式です（png / jpg のみ）: {source}")
+            jobs.append(
+                Job(
+                    source,
+                    output_dir / source.name,
+                    preview_dir / Path(source.name).with_suffix(".png") if preview_dir else None,
+                )
+            )
+        else:
+            raise UsageError(f"入力が見つかりません: {source}")
+
+    if not jobs:
+        raise UsageError("処理できる画像（png / jpg）がありません")
+
+    source_paths = {job.source.resolve() for job in jobs}
+    written: set[Path] = set()
+    for job in jobs:
+        targets = [] if is_dry_run else [job.output]
+        if job.preview is not None:
+            targets.append(job.preview)
+        for target in targets:
+            resolved = target.resolve()
+            if resolved in source_paths or (resolved.exists() and resolved.samefile(job.source)):
+                raise UsageError(
+                    f"出力先が元画像と同じになるため中止しました: {target}"
+                    "（-o で別のフォルダを指定してください）"
+                )
+            if resolved in written:
+                raise UsageError(f"出力先のファイル名が重複しています: {target}")
+            written.add(resolved)
+    return jobs
+
+
+def _load_image(path: Path) -> Image.Image:
+    with Image.open(path) as opened:
+        # EXIF の向きを反映してから扱う（OCR の座標と保存する画像を一致させる）
+        transposed = ImageOps.exif_transpose(opened)
+        transposed.load()
+        return transposed
+
+
+def _save_image(image: Image.Image, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix.lower() in (".jpg", ".jpeg"):
+        image.convert("RGB").save(path, quality=JPEG_QUALITY)
+    else:
+        image.save(path)
+
+
+def process_job(job: Job, config: Config, ocr: OcrFunction, *, is_dry_run: bool) -> list[Detection]:
+    image = _load_image(job.source)
+    words = ocr(image, config.ocr_lang)
+    detections = detect(words, config.rules())
+    if not is_dry_run:
+        _save_image(apply_mask(image, detections, config.mask), job.output)
+    if job.preview is not None:
+        _save_image(draw_preview(image, detections, config.mask), job.preview)
+    return detections
+
+
+def format_detection(source: Path, detection: Detection) -> str:
+    """検出結果の 1 行。種類・位置・ファイル名だけを出し、一致した文字列は出さない。"""
+    box = detection.box
+    return f"{source}\t{detection.kind}\tx={box.left} y={box.top} w={box.width} h={box.height}"
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="screenshot-masker", description="スクリーンショットのマスクと注釈"
+        prog="screenshot-masker",
+        description="スクリーンショット内の機密情報を OCR で見つけてぼかします。"
+        "終了コード: 検出あり 1 / なし 0 / エラー 2",
+        epilog=f"注釈を描くときは「screenshot-masker {ANNOTATE_COMMAND} --help」を参照。",
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("inputs", nargs="+", type=Path, help="画像ファイルまたはフォルダ")
     parser.add_argument(
-        "--debug",
+        "-o",
+        "--output",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help=f"マスク済み画像の出力先フォルダ（既定: {DEFAULT_OUTPUT_DIR}）",
+    )
+    parser.add_argument("-c", "--config", type=Path, help="設定ファイル（TOML）")
+    parser.add_argument(
+        "--method", choices=("blur", "fill"), help="マスク方法（既定: 設定ファイル、なければ blur）"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="画像を書かず、検出結果（種類・位置）だけを出す"
+    )
+    parser.add_argument(
+        "--preview",
         action="store_true",
-        help="エラー時に開発者向けの詳細（トレースバック）を表示する",
+        help=f"検出範囲を枠で囲んだ確認用画像を <出力先>{PREVIEW_DIR_SUFFIX} に出す",
     )
-    subcommands = parser.add_subparsers(dest="command", required=True)
-
-    annotate = subcommands.add_parser(
-        "annotate",
-        help="指示ファイルに従ってマスクと注釈を描き込む",
-        description="指示ファイルの masks を先に処理し、続けて annotations を書いた順に描く。",
-    )
-    annotate.add_argument("input", type=Path, help="元画像（上書きはしない）")
-    annotate.add_argument(
-        "-s", "--spec", type=Path, required=True, help="指示ファイル（.yaml / .yml / .json）"
-    )
-    annotate.add_argument(
-        "--style", type=Path, help="スタイル設定ファイル。指示ファイル内の style がさらに上書きする"
-    )
-    annotate.add_argument(
-        "-o", "--output", type=Path, help="出力先（省略時: <元の名前>.annotated.<拡張子>）"
-    )
-    annotate.add_argument(
-        "--scale", help="線の太さなどの倍率。auto（既定）または数値。指示ファイルの scale より優先"
-    )
+    parser.add_argument("--debug", action="store_true", help="エラー時に詳細を表示する")
     return parser
 
 
-def _parse_scale_argument(value: str | None) -> float | None:
-    if value is None or value == "auto":
-        return None
-    try:
-        number = float(value)
-    except ValueError as error:
-        raise SpecError(
-            f"--scale は auto か正の数値を指定してください（指定値: {value!r}）"
-        ) from error
-    return parse_scale(number, "--scale")
+def _report_error(message: str, error: BaseException, *, is_debug: bool) -> None:
+    print(f"エラー: {message}", file=sys.stderr)
+    if is_debug:
+        traceback.print_exception(error, file=sys.stderr)
 
 
-def run_annotate(args: argparse.Namespace) -> int:
-    input_path: Path = args.input
-    output_path: Path = args.output or default_output_path(input_path)
-    if output_path.resolve() == input_path.resolve():
-        raise SpecError(
-            "出力先が元画像と同じです。元画像は上書きしません。-o で別のパスを指定してください"
-        )
+def main(argv: Sequence[str] | None = None, ocr: OcrFunction = run_ocr) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == [ANNOTATE_COMMAND]:
+        # annotate_cli はこのモジュールの関数を使うため、循環しないようここで読み込む
+        from screenshot_masker import annotate_cli
 
-    base_style = load_style_file(args.style, DEFAULT_STYLE) if args.style else None
-    spec = load_spec(args.spec, base_style)
-    scale_override = _parse_scale_argument(args.scale)
-
-    try:
-        with Image.open(input_path) as source:
-            source.load()
-            image_format = source.format
-            result = render(source, spec, scale_override)
-    except FileNotFoundError as error:
-        raise SpecError(f"画像が見つかりません: {input_path}") from error
-    except UnidentifiedImageError as error:
-        raise SpecError(f"画像として読めません: {input_path}") from error
-
-    for warning in result.warnings:
-        print(f"注意: {warning}", file=sys.stderr)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        save_format = None if output_path.suffix else image_format
-        result.image.save(output_path, format=save_format)
-    except (OSError, ValueError, KeyError) as error:
-        raise SpecError(f"画像を保存できません: {output_path}（{error}）") from error
-    print(f"{output_path} を書き出しました（倍率 {result.scale:g}）")
-    return EXIT_OK
-
-
-def main(argv: Sequence[str] | None = None) -> int:
+        return annotate_cli.main(arguments[1:], ocr)
+    argv = arguments
     parser = build_parser()
     args = parser.parse_args(argv)
+    is_debug: bool = args.debug
+    is_dry_run: bool = args.dry_run
+
+    if is_dry_run and args.preview:
+        print("エラー: --dry-run と --preview は同時に指定できません", file=sys.stderr)
+        return EXIT_ERROR
+
+    output_dir: Path = args.output
+    preview_dir = (
+        output_dir.with_name(output_dir.name + PREVIEW_DIR_SUFFIX) if args.preview else None
+    )
     try:
-        if args.command == "annotate":
-            return run_annotate(args)
-    except SpecError as error:
-        print(f"エラー: {error}", file=sys.stderr)
-        if args.debug:
-            traceback.print_exc()
-        return EXIT_USER_ERROR
-    except Exception:
-        print(
-            "エラー: 予期しない問題で処理を中断しました。--debug を付けると詳細を表示します",
-            file=sys.stderr,
-        )
-        if args.debug:
-            traceback.print_exc()
-        return EXIT_UNEXPECTED_ERROR
-    parser.error(f"不明なコマンド: {args.command}")
-    return EXIT_USER_ERROR
+        config = load_config(args.config)
+        if args.method is not None:
+            config = replace(config, mask=replace(config.mask, method=args.method))
+        jobs = plan_jobs(args.inputs, output_dir, preview_dir, is_dry_run=is_dry_run)
+    except (ConfigError, UsageError) as error:
+        _report_error(str(error), error, is_debug=is_debug)
+        return EXIT_ERROR
+
+    has_error = False
+    detection_count = 0
+    detected_files = 0
+    for job in jobs:
+        try:
+            detections = process_job(job, config, ocr, is_dry_run=is_dry_run)
+        except OcrUnavailableError as error:
+            _report_error(str(error), error, is_debug=is_debug)
+            return EXIT_ERROR
+        except (OSError, UnidentifiedImageError) as error:
+            _report_error(f"画像を処理できませんでした: {job.source}", error, is_debug=is_debug)
+            has_error = True
+            continue
+        for detection in detections:
+            print(format_detection(job.source, detection))
+        detection_count += len(detections)
+        detected_files += 1 if detections else 0
+
+    summary = f"{len(jobs)} ファイル中 {detected_files} ファイルで {detection_count} 件検出"
+    if not is_dry_run:
+        summary += f"。マスク済み画像: {output_dir}"
+    if preview_dir is not None:
+        summary += f"。確認用画像（マスク前の文字が残るので公開しないこと）: {preview_dir}"
+    print(summary, file=sys.stderr)
+
+    if has_error:
+        return EXIT_ERROR
+    return EXIT_DETECTED if detection_count else EXIT_NO_DETECTION
 
 
 if __name__ == "__main__":

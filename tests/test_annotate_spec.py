@@ -69,7 +69,7 @@ def test_style_path_in_spec_is_relative_to_spec_file(tmp_path: Path) -> None:
 )
 def test_invalid_spec_is_reported(data: object, message: str) -> None:
     with pytest.raises(SpecError, match=message):
-        parse_spec(data, Path("."))
+        parse_spec(data, Path())
 
 
 def test_ratio_box_must_be_between_zero_and_one() -> None:

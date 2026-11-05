@@ -5,15 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from .errors import SpecError
+from screenshot_masker.errors import SpecError
+from screenshot_masker.models import Box
 
 Units = Literal["px", "ratio"]
 VALID_UNITS: tuple[Units, ...] = ("px", "ratio")
 
 
 @dataclass(frozen=True)
-class Box:
-    """画像上の矩形（ピクセル単位、右端・下端は含まない）。"""
+class Region:
+    """注釈の座標を解決した矩形（ピクセル単位の実数、右端・下端は含まない）。
+
+    マスク処理に渡すときは to_mask_box() で整数の models.Box に変換する。
+    """
 
     left: float
     top: float
@@ -39,6 +43,14 @@ class Box:
         if right <= left or bottom <= top:
             return None
         return (left, top, right, bottom)
+
+    def to_mask_box(self, width: int, height: int) -> Box | None:
+        """既存のマスク処理（mask.apply_mask）に渡せる、画像内に収めた Box。"""
+        bounds = self.clipped(width, height)
+        if bounds is None:
+            return None
+        left, top, right, bottom = bounds
+        return Box(left, top, right - left, bottom - top)
 
 
 def parse_units(value: object, where: str) -> Units:
@@ -79,8 +91,8 @@ def resolve_point(
 
 def resolve_box(
     value: object, image_size: tuple[int, int], units: Units, where: str, name: str = "box"
-) -> Box:
-    """[x, y, width, height] をピクセルの Box にする。"""
+) -> Region:
+    """[x, y, width, height] をピクセルの Region にする。"""
     x, y, width, height = _numbers(value, 4, where, name)
     if width <= 0 or height <= 0:
         raise SpecError(f"{where}: {name} の幅と高さは正の値にしてください")
@@ -89,4 +101,4 @@ def resolve_box(
         image_width, image_height = image_size
         x, width = x * image_width, width * image_width
         y, height = y * image_height, height * image_height
-    return Box(left=x, top=y, right=x + width, bottom=y + height)
+    return Region(left=x, top=y, right=x + width, bottom=y + height)

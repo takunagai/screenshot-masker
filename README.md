@@ -1,51 +1,170 @@
 # screenshot-masker
 
-記事や操作マニュアルに載せるスクリーンショットに、指示ファイル（YAML / JSON）から機械的に
-マスクと注釈を描き込むコマンドラインツールです。同じスタイル設定を使えば、何枚でも同じ見た目の
-注釈を揃えられます。元画像は上書きしません。
+ブログ記事（Zenn・note など）に載せるスクリーンショットから、公開してはいけない文字列を OCR で見つけてぼかす CLI です。注釈（枠・番号バッジ・矢印など）を描き込む `annotate` サブコマンドもあります（[注釈を付ける](#注釈を付けるannotate)）。
 
-## 必要なもの
+- 元画像は上書きしません。マスク済み画像は別フォルダに書き出します（出力先が元画像と重なる指定はエラーで止まります）
+- 検出結果の表示には「ファイル名・種類・位置」だけを出し、一致した文字列そのものは表示しません
+- 書き出す画像は再エンコードされるため、EXIF などのメタデータは引き継がれません
 
-- Python 3.11 以上
-- [uv](https://docs.astral.sh/uv/)（開発時）
-- 日本語のラベルを描く場合は日本語フォント（Noto Sans CJK、IPA ゴシック、ヒラギノ、メイリオなどを自動で探します）
-
-外部サービスは使わないため、API キーなどの環境変数は不要です。
-
-## インストール
+## 導入（macOS）
 
 ```sh
+# Tesseract 本体と言語データ（日本語を含む）
+brew install tesseract tesseract-lang
+
+# uv が無ければ
+brew install uv
+
+# このリポジトリで依存を入れる
 uv sync
-uv run screenshot-masker --help
 ```
 
-## annotate: 注釈を付ける
+Tesseract に日本語（`jpn`）と英語（`eng`）が入っているかは `tesseract --list-langs` で確認できます。
+
+## 使い方
 
 ```sh
-uv run screenshot-masker annotate INPUT.png --spec annotate.yaml [--style style.yaml] [-o OUTPUT.png] [--scale auto|数値]
+# 1 枚をマスクして masked/ に出力
+uv run screenshot-masker shot.png
+
+# フォルダごと（サブフォルダの構成を保って出力）。出力先を指定
+uv run screenshot-masker ~/Desktop/screenshots -o ~/Desktop/masked
+
+# 画像を書かずに検出結果だけを見る
+uv run screenshot-masker shot.png --dry-run
+
+# 検出範囲を赤枠で囲んだ確認用画像も出す（<出力先>_preview/ に PNG で保存）
+uv run screenshot-masker shot.png -o masked --preview
+
+# ぼかしではなく塗りつぶし
+uv run screenshot-masker shot.png --method fill
 ```
+
+`uv tool install .` でインストールすると、`uv run` なしで `screenshot-masker` として使えます。
+
+### オプション
 
 | オプション | 内容 |
 | --- | --- |
-| `-s`, `--spec` | 指示ファイル（`.yaml` / `.yml` / `.json`）。必須 |
-| `--style` | スタイル設定ファイル。記事ごとの見た目の既定値 |
-| `-o`, `--output` | 出力先。省略時は `<元の名前>.annotated.<拡張子>`。元画像と同じパスは拒否します |
-| `--scale` | 線の太さなどの倍率。省略時は画像の幅から自動で決めます（後述） |
-| `--debug` | エラー時に開発者向けの詳細（トレースバック）を表示します。`annotate` の前に書きます |
+| `-o, --output DIR` | マスク済み画像の出力先（既定: `masked`） |
+| `-c, --config FILE` | 設定ファイル（TOML） |
+| `--method blur\|fill` | マスク方法（既定: 設定ファイルの値、無ければ `blur`） |
+| `--dry-run` | 画像を書かず、検出結果だけを標準出力に出す |
+| `--preview` | 確認用画像を `<出力先>_preview/` に出す。`--dry-run` とは同時に使えません |
+| `--debug` | エラー時に詳細（トレースバック）を表示する |
+
+> [!WARNING]
+> 確認用画像（`--preview`）にはマスク前の文字がそのまま残ります。公開用のフォルダに混ぜないでください。
+
+### 出力
+
+標準出力に 1 件 1 行、タブ区切りで出します。
+
+```
+shots/shot.png	email	x=130 y=40 w=259 h=30
+shots/shot.png	url	x=100 y=100 w=414 h=30
+```
+
+集計とエラーは標準エラー出力に出します。
+
+### 終了コード
+
+| コード | 意味 |
+| --- | --- |
+| 0 | 検出なし |
+| 1 | 検出あり |
+| 2 | エラー（入力が無い、設定が不正、Tesseract が無い、画像が読めない など） |
+
+複数の画像のうち一部だけ読めなかった場合も、残りは処理したうえで 2 を返します。
+
+## 検出する種類
+
+| 種類 | 内容 |
+| --- | --- |
+| `claude` | `session_` / `cse_` で始まる英数字列、`claude.ai/code` の URL |
+| `url` | `http(s)://`・`www.` で始まるもの、`ドメイン/パス` の形のもの（残してよいドメインを設定可） |
+| `email` | メールアドレス |
+| `ipv4` | IPv4 アドレス（各値 0〜255 のもの） |
+| `home_path` | `/Users/<name>/…`、`/home/<name>/…` |
+| `token` | `sk-`・`ghp_`・`gho_`・`xox?-`・`AKIA` で始まるもの、32 文字以上の 16 進列、32 文字以上の base64 らしい列 |
+| （任意） | 設定ファイルで追加した正規表現 |
+
+OCR の単語を行単位に組み立ててから照合します。OCR が 1 語を隙間なく分割した場合も連結して照合します。一致した単語の範囲全体（例: `KEY=sk-…` なら `KEY=` も含む）を、枠より少し広げてマスクします。
+
+## 設定ファイル
+
+`-c` で指定するか、次の順に探した最初のファイルを使います。
+
+1. カレントディレクトリの `screenshot-masker.toml`
+2. `~/.config/screenshot-masker/config.toml`
+
+例は [`screenshot-masker.example.toml`](screenshot-masker.example.toml) を参照してください。
+
+```toml
+[ocr]
+lang = "jpn+eng"
+
+[mask]
+method = "blur"        # "blur" か "fill"
+padding = 6            # 文字の枠から広げるピクセル数
+blur_radius = 12       # ぼかしの強さ（文字の高さの半分より小さい値は自動で引き上げ）
+fill_color = "#000000" # 塗りつぶしの色
+
+[detect]
+disabled = ["ipv4"]                      # 無効にする種類
+allowed_domains = ["zenn.dev", "note.com"] # url で残してよいドメイン（サブドメインも含む）
+
+[[detect.custom]]
+name = "project_code"
+pattern = 'PRJ-\d{4}'
+```
+
+`allowed_domains` は `url` にだけ効きます。`claude.ai/code` の URL は `claude` として別に検出されるため、`claude.ai` を許可しても隠れます（残したい場合は `disabled = ["claude"]`）。
+
+## 注釈を付ける（annotate）
+
+記事や操作マニュアル用に、矢印・番号バッジ・枠・ぼかし・短い文字ラベル・スポットライトを、指示ファイル（YAML / JSON）から機械的に描き込みます。見た目の既定値を設定ファイルにまとめれば、何枚でも同じ見た目の注釈を揃えられます。
+
+- 元画像は上書きしません。出力先フォルダの扱い（フォルダ指定でサブフォルダの構成を保つ、元画像と重なる出力先はエラー）は、マスクと同じです
+- `--mask` を付けると、OCR で検出した機密情報をマスクしてから注釈を描きます（マスク → 注釈の順）
+
+```sh
+# 1 枚に注釈を描いて annotated/ に出力
+uv run screenshot-masker annotate shot.png --spec annotate.yaml
+
+# 機密情報をマスクしてから注釈を描く。見た目は記事ごとの設定ファイルから
+uv run screenshot-masker annotate shot.png --spec annotate.yaml --mask -c article.toml -o out
+
+# フォルダごと（すべての画像に同じ指示を適用）
+uv run screenshot-masker annotate ~/Desktop/screenshots --spec annotate.yaml -o ~/Desktop/annotated
+```
+
+### オプション（annotate）
+
+| オプション | 内容 |
+| --- | --- |
+| `-s, --spec FILE` | 指示ファイル（`.yaml` / `.yml` / `.json`）。必須 |
+| `-o, --output DIR` | 出力先（既定: `annotated`） |
+| `-c, --config FILE` | 設定ファイル（TOML）。`[annotate]` に見た目の既定値、`[mask]` に `--mask` の設定 |
+| `--mask` | 注釈の前に、OCR で検出した機密情報をマスクする |
+| `--method blur\|fill` | `--mask` のマスク方法（`--mask` と一緒に指定） |
+| `--scale auto\|数値` | 線の太さなどの倍率（既定: 画像の幅から自動。後述） |
+| `--debug` | エラー時に詳細（トレースバック）を表示する |
+
+終了コードはマスクと同じです（成功 0 / `--mask` で検出あり 1 / エラー 2）。`--mask` のときは、検出結果をマスクと同じ形式で標準出力に出します。
 
 ### 例
 
-[`examples/`](examples/) に架空の設定画面と指示ファイルがあります。
+[`examples/`](examples/) に架空の設定画面・指示ファイル・設定ファイルがあります。
 
 ```sh
-uv run screenshot-masker annotate examples/sample.png --spec examples/annotate.yaml -o examples/sample-annotated.png
+uv run screenshot-masker annotate examples/sample.png --spec examples/annotate.yaml -c examples/article.toml
 ```
 
 `examples/annotate.yaml`:
 
 ```yaml
-style: style.yaml          # 指示ファイルからの相対パス
-masks:                     # 先に処理する
+masks:                     # 先に処理する（既存のマスクと同じぼかし・塗りつぶし）
   - {type: blur, box: [640, 120, 260, 36]}     # メールアドレス欄（架空）をぼかす
   - {type: fill, box: [640, 180, 260, 36]}     # API キー欄（架空）を塗りつぶす
 annotations:               # masks の後に、書いた順に描く
@@ -57,9 +176,7 @@ annotations:               # masks の後に、書いた順に描く
   - {type: badge, at: [0.95, 0.9], units: ratio}   # 2（割合で指定）
 ```
 
-出力（`examples/sample-annotated.png`）では、メール欄がぼかされ、API キー欄が黒く塗られ、
-カードの外側が暗くなり、カードを赤い角丸の枠が囲みます。枠の左上に「1」、右下の隅に「2」の
-番号バッジが付き、ラベル「ここで「保存」を押します」から保存ボタンへ矢印が伸びます。
+出力（[`examples/sample-annotated.png`](examples/sample-annotated.png)）では、メール欄がぼかされ、API キー欄が黒く塗られ、カードの外側が暗くなり、カードを赤い角丸の枠が囲みます。枠の左上に「1」、右下の隅に「2」の番号バッジが付き、ラベル「ここで「保存」を押します」から保存ボタンへ矢印が伸びます。
 
 ![注釈を付けた例](examples/sample-annotated.png)
 
@@ -69,74 +186,88 @@ annotations:               # masks の後に、書いた順に描く
 | --- | --- |
 | `units` | 座標の単位。`px`（既定）か `ratio`（画像の幅・高さに対する 0〜1 の割合）。各指示の `units` で個別に上書きできます |
 | `scale` | 倍率。`auto`（既定）か数値。`--scale` が優先 |
-| `style` | スタイル設定ファイルへのパス、またはその場で書いたスタイル |
+| `style` | この画像だけの見た目。その場で書いたマッピングか、YAML / JSON ファイルへのパス（指示ファイルからの相対パス） |
 | `masks` | 先に処理するマスク（`blur` / `fill` のみ） |
 | `annotations` | 注釈。書いた順に重ねて描きます |
 
-座標の書き方: 範囲は `box: [x, y, 幅, 高さ]`、点は `[x, y]` です。
+範囲は `box: [x, y, 幅, 高さ]`、点は `[x, y]` で書きます。
 
-| type | 位置の項目 | 見た目の項目（スタイルの既定値を上書き） |
+| type | 位置の項目 | 見た目の項目（既定値を上書き） |
 | --- | --- | --- |
 | `rect` 枠 | `box` | `color`, `width`（太さ）, `radius`（角丸） |
 | `badge` 番号バッジ | `at`（中心）, `number`（省略時 1, 2, 3… と自動） | `color`, `text_color`, `radius`, `font_size`, `outline_color`, `outline_width` |
 | `arrow` 矢印 | `from`, `to`（矢じり側） | `color`, `width`, `head_size`（矢じりの長さ） |
-| `blur` ぼかし | `box` | `radius` |
-| `fill` 塗りつぶし | `box` | `color` |
-| `label` 文字ラベル | `at`（背景の左上）, `text`（`\n` で改行） | `text_color`, `background`, `font_size`, `padding`, `radius` |
+| `blur` ぼかし | `box` | `radius`（0 以上の整数） |
+| `fill` 塗りつぶし | `box` | `color`（`#RRGGBB`） |
+| `label` 文字ラベル | `at`（背景の左上）, `text`（`\n` で改行。日本語可） | `text_color`, `background`, `font_size`, `padding`, `radius` |
 | `spotlight` スポットライト | `box`（明るく残す範囲） | `color`, `opacity`（0〜1）, `radius` |
 
-補足:
-
+- `blur` / `fill` は既存のマスクと同じ処理です（ぼかしはモザイクにしてからぼかし、強さが範囲の高さの半分より小さければ自動で引き上げます）
 - `rect` の線は `box` の外側に描くため、囲んだ中身を隠しません
 - `badge` の `number` に整数を書くと、以降の自動の番号はその続きになります
-- 色は `#RRGGBB`、`#RRGGBBAA`（半透明）、`red` などの色名で書けます
-- 画像からはみ出した部分は切り取って描きます
-- 綴りの誤りなど不明な項目はエラーにします
+- 注釈の色は `#RRGGBB`、`#RRGGBBAA`（半透明）、`red` などの色名で書けます
+- 画像からはみ出した部分は切り取って描きます。綴りの誤りなど不明な項目はエラーにします
 
-### マスクと注釈の順序
+処理の順序は「`--mask` の OCR マスク → `masks` → `annotations`」です。`masks` はファイル内で後ろに書いても先に処理します。
 
-`masks` は `annotations` より必ず先に処理します（ファイル内で後ろに書いても同じ）。秘密の情報を
-ぼかしてから、その上に枠や矢印を描くためです。`annotations` 内の `blur` / `fill` は、書いた順に
-処理します。
+### 見た目の既定値（設定ファイルの `[annotate]`）
 
-### スタイル設定ファイル
+色・太さ・フォントの既定値を、マスクと同じ設定ファイル（TOML）の `[annotate]` にまとめます。記事ごとにファイルを分けて `-c` で切り替えると、見た目を揃えられます（例: [`examples/article.toml`](examples/article.toml)）。
 
-色・太さ・フォントの既定値を 1 つのファイルにまとめ、記事ごとに見た目を揃えます
-（例: [`examples/style.yaml`](examples/style.yaml)）。
+```toml
+[annotate]
+reference_width = 1600                 # 倍率の基準になる画像の幅
+# font = "/path/to/NotoSansCJK-Bold.ttc" # 省略時は日本語フォントを自動で探す
 
-```yaml
-reference_width: 1600       # 倍率の基準になる画像の幅
-font: /path/to/NotoSansCJK-Bold.ttc   # 省略時は日本語フォントを自動で探す
-rect: {color: "#E5484D", width: 4, radius: 6}
-badge: {color: "#E5484D", text_color: "#FFFFFF", radius: 16, font_size: 18}
-arrow: {color: "#E5484D", width: 4, head_size: 18}
-label: {background: "#1F2937E6", text_color: "#FFFFFF", font_size: 18, padding: 8, radius: 6}
-blur: {radius: 12}
-fill: {color: "#000000"}
-spotlight: {color: "#000000", opacity: 0.55, radius: 8}
+[annotate.rect]
+color = "#E5484D"
+width = 4
+radius = 6
+
+[annotate.badge]
+color = "#E5484D"
+text_color = "#FFFFFF"
+radius = 16
+font_size = 18
+
+[annotate.arrow]
+color = "#E5484D"
+width = 4
+head_size = 18
+
+[annotate.label]
+background = "#1F2937E6"
+text_color = "#FFFFFF"
+font_size = 18
+padding = 8
+
+[annotate.spotlight]
+color = "#000000"
+opacity = 0.55
 ```
 
-書いた項目だけが上書きされます。重なり順は次のとおりです。
+`blur` の `radius` と `fill` の `color` の既定値は、`[mask]` の `blur_radius` / `fill_color` を引き継ぎます（`[annotate.blur]` / `[annotate.fill]` で別の値にもできます）。
 
-既定値 < `--style` のファイル < 指示ファイルの `style` < 各指示に書いた項目
+重なり順: 組み込みの既定値 < 設定ファイル < 指示ファイルの `style` < 各指示に書いた項目
+
+日本語のラベルには日本語フォントが要ります。Noto Sans CJK、IPA ゴシック、ヒラギノ、メイリオなどを自動で探し、見つからなければ注意を表示して既定のフォントで描きます。
 
 ### Retina（2 倍）画像の倍率
 
-スタイルの長さ（太さ・半径・文字の大きさ・矢じり・ぼかしの強さ）は 1 倍の画像での見た目で書き、
-描画時に倍率を掛けます。倍率は `画像の幅 ÷ reference_width` を四捨五入した整数（最小 1）です。
-`reference_width: 1600` の場合、幅 2399px 以下は 1 倍、2400〜3999px は 2 倍、4000〜5599px は 3 倍になります。
-自動の判定が合わない画像（スマートフォンの 3 倍画像など）は `--scale 3` か、指示ファイルの
-`scale: 3` で指定してください。座標（`box` など）は画像の実際のピクセルで書きます。
+見た目の長さ（太さ・半径・文字の大きさ・矢じり）は 1 倍の画像での見た目で書き、描画時に倍率を掛けます。倍率は `画像の幅 ÷ reference_width` を四捨五入した整数（最小 1）です。`reference_width = 1600` の場合、幅 2399px 以下は 1 倍、2400〜3999px は 2 倍、4000〜5599px は 3 倍です。自動の判定が合わない画像（スマートフォンの 3 倍画像など）は `--scale 3` か、指示ファイルの `scale: 3` で指定してください。座標（`box` など）は画像の実際のピクセルで書きます。
+
+## 限界
+
+- OCR の精度に依存します。文字が小さい、背景と文字の色が近い、装飾フォントなどは見落とすことがあります。公開前に必ず目視で確認してください（`--preview` が便利です）
+- 照合は行単位です。2 行に折り返した URL などは、片方の行だけが検出されることがあります
 
 ## 開発
 
 ```sh
 uv sync
-uv run ruff check .          # lint
-uv run ruff format --check . # 書式
-uv run mypy                  # 型検査（strict）
-uv run pytest                # テスト
-uv build                     # パッケージのビルド
+uv run ruff check && uv run ruff format --check
+uv run mypy
+uv run pytest
 ```
 
-テストは、描画結果を特定の画素の色と変化した範囲で確かめます。
+Tesseract（`jpn+eng`）が入っていない環境では、実際の OCR を使うテスト（`tests/test_ocr_integration.py`）は skip されます。検出ロジック（`src/screenshot_masker/detect.py`）は OCR から切り離した純関数で、単語と位置のリストを入力にテストしています。

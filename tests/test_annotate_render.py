@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import pytest
-from helpers import WHITE, changed_box, checker_image, is_close, pixel, run, white_image
 from PIL import Image
 
+from screenshot_masker.config import MaskMethod, MaskSettings
 from screenshot_masker.errors import SpecError
+from screenshot_masker.mask import apply_mask
+from screenshot_masker.models import Box, Detection
 from screenshot_masker.render import decide_scale
+from tests.image_helpers import WHITE, changed_box, checker_image, is_close, pixel, run, white_image
 
 RED = (229, 72, 77)
 
@@ -168,6 +171,26 @@ def test_fill_paints_region_with_color() -> None:
     result = run(source, {"masks": [{"type": "fill", "box": [10, 10, 20, 20], "color": "#000000"}]})
     assert pixel(result.image, 15, 15) == (0, 0, 0)
     assert changed_box(source, result.image) == (10, 10, 30, 30)
+
+
+def test_blur_and_fill_match_existing_mask_processing() -> None:
+    """範囲のぼかし・塗りつぶしは、OCR マスクと同じ apply_mask の結果になる。"""
+    source = checker_image(200, 100)
+    box = Box(50, 20, 60, 40)
+    cases: tuple[tuple[MaskMethod, dict[str, object]], ...] = (
+        ("blur", {"type": "blur", "box": [50, 20, 60, 40], "radius": 12}),
+        ("fill", {"type": "fill", "box": [50, 20, 60, 40], "color": "#123456"}),
+    )
+    for method, item in cases:
+        settings = MaskSettings(method=method, padding=0, blur_radius=12, fill_color="#123456")
+        expected = apply_mask(source, [Detection(method, box)], settings)
+        result = run(source, {"masks": [item]})
+        assert changed_box(expected, result.image) is None
+
+
+def test_fill_color_must_be_rrggbb_like_mask_settings() -> None:
+    with pytest.raises(SpecError, match="#RRGGBB"):
+        run(white_image(), {"masks": [{"type": "fill", "box": [0, 0, 5, 5], "color": "red"}]})
 
 
 def test_masks_are_applied_before_annotations() -> None:

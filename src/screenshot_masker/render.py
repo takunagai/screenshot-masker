@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -15,11 +16,14 @@ from typing import Any
 
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 
-from .errors import SpecError
-from .geometry import Box, resolve_box, resolve_point
-from .masking import RGBA, blur_region, fill_region
-from .spec import Operation, Spec
+from screenshot_masker.config import MaskSettings
+from screenshot_masker.errors import SpecError
+from screenshot_masker.geometry import Region, resolve_box, resolve_point
+from screenshot_masker.mask import apply_mask, normalize_mode
+from screenshot_masker.models import Detection
+from screenshot_masker.spec import Operation, Spec
 
+RGBA = tuple[int, int, int, int]
 FontType = ImageFont.FreeTypeFont | ImageFont.ImageFont
 ToLayer = Callable[[float, float], tuple[float, float]]
 Painter = Callable[[ImageDraw.ImageDraw, ToLayer, int], None]
@@ -124,7 +128,7 @@ def _length(
     return _number(options[name], op.where, name, allow_zero=allow_zero) * context.scale
 
 
-def _box(op: Operation, context: RenderContext, name: str = "box") -> Box:
+def _box(op: Operation, context: RenderContext, name: str = "box") -> Region:
     return resolve_box(op.item[name], context.image_size, op.units, op.where, name)
 
 
@@ -356,16 +360,46 @@ def draw_spotlight(
     image.alpha_composite(overlay)
 
 
+def _apply_existing_mask(
+    image: Image.Image, op: Operation, context: RenderContext, settings: MaskSettings
+) -> None:
+    """既存のマスク処理（mask.apply_mask）を box の範囲にかけ、結果を image に戻す。"""
+    box = _box(op, context).to_mask_box(image.width, image.height)
+    if box is None:
+        return
+    masked = apply_mask(image, [Detection(op.kind, box)], settings)
+    bounds = (box.left, box.top, box.right, box.bottom)
+    image.paste(masked.crop(bounds), bounds[:2])
+
+
 def apply_blur(
     image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext
 ) -> None:
-    blur_region(image, _box(op, context), _length(options, "radius", op, context, allow_zero=False))
+    """ぼかし。OCR マスクと同じく、モザイクにしてからぼかす。
+
+    強さは OCR マスクと同じ扱い（倍率は掛けず、範囲の高さの半分より小さければ自動で引き上げ）。
+    """
+    radius = options["radius"]
+    if isinstance(radius, bool) or not isinstance(radius, int) or radius < 0:
+        raise SpecError(
+            f"{op.where}: radius は 0 以上の整数で指定してください（指定値: {radius!r}）"
+        )
+    _apply_existing_mask(
+        image, op, context, MaskSettings(method="blur", padding=0, blur_radius=radius)
+    )
 
 
 def apply_fill(
     image: Image.Image, op: Operation, options: dict[str, Any], context: RenderContext
 ) -> None:
-    fill_region(image, _box(op, context), _color(options["color"], op.where, "color"))
+    color = options["color"]
+    if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        raise SpecError(
+            f'{op.where}: color は "#RRGGBB" 形式で指定してください（指定値: {color!r}）'
+        )
+    _apply_existing_mask(
+        image, op, context, MaskSettings(method="fill", padding=0, fill_color=color)
+    )
 
 
 Renderer = Callable[[Image.Image, Operation, dict[str, Any], RenderContext], None]
@@ -388,8 +422,8 @@ class RenderResult:
 
 
 def render(source: Image.Image, spec: Spec, scale_override: float | None = None) -> RenderResult:
-    """source を変更せず、マスク → 注釈の順に処理した新しい画像を返す。"""
-    has_alpha = "A" in source.getbands() or "transparency" in source.info
+    """source を変更せず、指示ファイルの masks → annotations の順に処理した新しい画像を返す。"""
+    output_mode = normalize_mode(source).mode
     image = source.convert("RGBA")
     scale_value = scale_override if scale_override is not None else spec.scale
     context = RenderContext(
@@ -403,5 +437,5 @@ def render(source: Image.Image, spec: Spec, scale_override: float | None = None)
             **{k: v for k, v in op.item.items() if k in spec.style[op.kind]},
         }
         RENDERERS[op.kind](image, op, options, context)
-    output = image if has_alpha else image.convert("RGB")
+    output = image.convert(output_mode)
     return RenderResult(image=output, scale=context.scale, warnings=context.warnings)

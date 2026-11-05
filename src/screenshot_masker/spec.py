@@ -17,9 +17,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .errors import SpecError
-from .geometry import Units, parse_units
-from .style import DEFAULT_STYLE, Style, load_data_file, load_style_file, merge_style
+from screenshot_masker.errors import SpecError
+from screenshot_masker.geometry import Units, parse_units
+from screenshot_masker.style import (
+    DEFAULT_STYLE,
+    Style,
+    load_data_file,
+    load_style_file,
+    merge_style,
+)
 
 GEOMETRY_KEYS: dict[str, tuple[str, ...]] = {
     "rect": ("box",),
