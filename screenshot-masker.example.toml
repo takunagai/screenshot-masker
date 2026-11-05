@@ -24,3 +24,16 @@ allowed_domains = ["zenn.dev", "note.com"]
 [[detect.custom]]
 name = "project_code"
 pattern = 'PRJ-\d{4}'
+
+# annotate サブコマンドの見た目の既定値（省略した項目は組み込みの既定値）
+# 長さは 1 倍の画像での論理ピクセル。画像の幅から倍率を決めて掛ける
+[annotate]
+reference_width = 1600
+
+[annotate.rect]
+color = "#E5484D"
+width = 4
+
+[annotate.badge]
+color = "#E5484D"
+radius = 16

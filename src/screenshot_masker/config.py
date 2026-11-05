@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from screenshot_masker.detect import DEFAULT_KINDS, Rule, build_rules
+from screenshot_masker.errors import SpecError
+from screenshot_masker.style import DEFAULT_STYLE, Style, merge_style
 
 MaskMethod = Literal["blur", "fill"]
 
@@ -37,6 +39,8 @@ class Config:
     disabled_kinds: tuple[str, ...] = ()
     allowed_domains: tuple[str, ...] = ()
     custom_patterns: tuple[tuple[str, str], ...] = ()
+    # annotate サブコマンドの見た目の既定値（[annotate] テーブル）
+    annotate_style: Style = field(default_factory=lambda: merge_style(DEFAULT_STYLE, None, ""))
 
     def rules(self) -> list[Rule]:
         return build_rules(
@@ -98,6 +102,20 @@ def _parse_custom(table: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     return tuple(patterns)
 
 
+def _parse_annotate(data: dict[str, Any], mask: MaskSettings) -> Style:
+    """[annotate] テーブルを読む。ぼかし・塗りつぶしの既定値は [mask] の値を引き継ぐ。"""
+    table = _expect_table(data, "annotate")
+    base = merge_style(
+        DEFAULT_STYLE,
+        {"blur": {"radius": mask.blur_radius}, "fill": {"color": mask.fill_color}},
+        "[mask]",
+    )
+    try:
+        return merge_style(base, table, "[annotate]")
+    except SpecError as error:
+        raise ConfigError(str(error)) from error
+
+
 def parse_config(data: dict[str, Any]) -> Config:
     """TOML を読み込んだ辞書から Config を作る。"""
     ocr = _expect_table(data, "ocr")
@@ -114,9 +132,11 @@ def parse_config(data: dict[str, Any]) -> Config:
             f"[detect] disabled に未知の種類があります: {', '.join(unknown)}"
             f"（指定できる種類: {', '.join(sorted(known_kinds))}）"
         )
+    mask = _parse_mask(_expect_table(data, "mask"))
     return Config(
         ocr_lang=lang,
-        mask=_parse_mask(_expect_table(data, "mask")),
+        mask=mask,
+        annotate_style=_parse_annotate(data, mask),
         disabled_kinds=disabled,
         allowed_domains=_expect_string_list(detect_table, "allowed_domains", "detect"),
         custom_patterns=custom_patterns,

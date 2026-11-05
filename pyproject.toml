@@ -1,12 +1,13 @@
 [project]
 name = "screenshot-masker"
 version = "0.1.0"
-description = "スクリーンショット内の機密情報を OCR で見つけてぼかす CLI"
+description = "スクリーンショット内の機密情報を OCR で見つけてぼかし、注釈を描き込む CLI"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pillow>=11.0",
     "pytesseract>=0.3.13",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
@@ -17,6 +18,7 @@ dev = [
     "mypy>=1.13",
     "pytest>=8.3",
     "ruff>=0.8",
+    "types-pyyaml>=6.0",
 ]
 
 [build-system]

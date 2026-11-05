@@ -1,6 +1,8 @@
 """screenshot-masker のコマンドライン入口。
 
 終了コード: 検出あり 1 / 検出なし 0 / エラー 2
+
+最初の引数が annotate のときは、注釈のサブコマンド（annotate_cli）に処理を渡す。
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
 JPEG_QUALITY = 95
 DEFAULT_OUTPUT_DIR = Path("masked")
 PREVIEW_DIR_SUFFIX = "_preview"
+ANNOTATE_COMMAND = "annotate"
 
 OcrFunction = Callable[[Image.Image, str], list[Word]]
 
@@ -148,6 +151,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="screenshot-masker",
         description="スクリーンショット内の機密情報を OCR で見つけてぼかします。"
         "終了コード: 検出あり 1 / なし 0 / エラー 2",
+        epilog=f"注釈を描くときは「screenshot-masker {ANNOTATE_COMMAND} --help」を参照。",
     )
     parser.add_argument("inputs", nargs="+", type=Path, help="画像ファイルまたはフォルダ")
     parser.add_argument(
@@ -180,6 +184,13 @@ def _report_error(message: str, error: BaseException, *, is_debug: bool) -> None
 
 
 def main(argv: Sequence[str] | None = None, ocr: OcrFunction = run_ocr) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == [ANNOTATE_COMMAND]:
+        # annotate_cli はこのモジュールの関数を使うため、循環しないようここで読み込む
+        from screenshot_masker import annotate_cli
+
+        return annotate_cli.main(arguments[1:], ocr)
+    argv = arguments
     parser = build_parser()
     args = parser.parse_args(argv)
     is_debug: bool = args.debug
