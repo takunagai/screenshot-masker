@@ -44,14 +44,14 @@ HOOK_IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp
 # --on-detect mask で作るマスク済みの写しの置き場（OS の一時フォルダの下。名前に利用者 ID を付ける）
 MASKED_COPY_DIR_NAME = "screenshot-masker-hook"
 
-_IMAGE_EXTENSION = r"\.(?:png|jpe?g|gif|webp|bmp|tiff?)"
-# プロンプト中の画像のパス: "引用符付き"・'引用符付き'・空白を \ でエスケープしたもの・@ 付き
-_PROMPT_PATH_PATTERN = re.compile(
-    rf"\"([^\"\n]+?{_IMAGE_EXTENSION})\""
-    rf"|'([^'\n]+?{_IMAGE_EXTENSION})'"
-    rf"|((?:\\ |[^\s\"'<>(),])+?{_IMAGE_EXTENSION})(?![\w.])",
-    re.IGNORECASE,
-)
+# プロンプト中の画像のパスの終わり（拡張子）。ここから左へ候補を広げて、実在するファイルを探す
+_IMAGE_EXTENSION_PATTERN = re.compile(r"\.(?:png|jpe?g|gif|webp|bmp|tiff?)(?![\w.])", re.IGNORECASE)
+# パスの始まりになりうる位置の直前の文字（空白は str.isspace で判定するので含めない）
+_PATH_OPENERS = frozenset("\"'「『(（<[@")
+# 候補の先頭から取り除く文字（@ 付きの参照・引用符・括弧）
+_PATH_LEADING_CHARS = "@\"'「『(（<["
+# 1 つのパスとして左へ広げる長さの上限
+MAX_PATH_LENGTH = 1024
 
 HookOutput = dict[str, Any]
 
@@ -89,15 +89,42 @@ def read_hook_input(text: str) -> dict[str, Any]:
     return data
 
 
+def _resolve_candidate(raw: str, cwd: Path) -> Path | None:
+    text = raw.lstrip(_PATH_LEADING_CHARS).replace("\\ ", " ")
+    if not text:
+        return None
+    candidate = Path(text).expanduser()
+    path = candidate if candidate.is_absolute() else cwd / candidate
+    try:
+        return path if path.is_file() else None
+    except OSError:
+        return None
+
+
 def find_image_paths(prompt: str, cwd: Path) -> list[Path]:
-    """プロンプトに書かれた画像のパスのうち、実在するファイルを返す（重複は除く）。"""
+    """プロンプトに書かれた画像のパスのうち、実在するファイルを返す（重複は除く）。
+
+    パスは空白・括弧・特殊な空白（macOS のスクリーンショット名の U+202F など）を含みうるので、
+    拡張子の位置から左へ、空白や括弧の切れ目ごとに候補を広げ、実在する最も長いものを採る。
+    """
     found: list[Path] = []
-    for match in _PROMPT_PATH_PATTERN.finditer(prompt):
-        raw = next(group for group in match.groups() if group)
-        candidate = Path(raw.removeprefix("@").replace("\\ ", " ")).expanduser()
-        path = candidate if candidate.is_absolute() else cwd / candidate
-        if path.is_file() and path not in found:
-            found.append(path)
+    for match in _IMAGE_EXTENSION_PATTERN.finditer(prompt):
+        end = match.end()
+        line_start = prompt.rfind("\n", 0, match.start()) + 1
+        window_start = max(line_start, end - MAX_PATH_LENGTH)
+        starts = [
+            index
+            for index in range(window_start, match.start())
+            if index == window_start
+            or prompt[index - 1].isspace()
+            or prompt[index - 1] in _PATH_OPENERS
+        ]
+        for start in starts:  # 左（長い候補）から順に試す
+            path = _resolve_candidate(prompt[start:end], cwd)
+            if path is not None:
+                if path not in found:
+                    found.append(path)
+                break
     return found
 
 
@@ -154,10 +181,6 @@ def write_masked_copy(path: Path, detections: Sequence[Detection], config: Confi
     return target
 
 
-def _is_within(path: Path, directory: Path) -> bool:
-    return path.resolve().is_relative_to(directory.resolve())
-
-
 def pre_tool_use_deny(reason: str) -> HookOutput:
     return {
         "hookSpecificOutput": {
@@ -187,16 +210,14 @@ def handle_read(
     summary = describe(path, detections)
     if on_detect == ON_DETECT_MASK:
         masked = write_masked_copy(path, detections, config)
-        cwd = Path(str(data.get("cwd") or "."))
-        # 作業フォルダの中の画像なら確認なしで開かせ、外の画像なら利用者に確認させる
-        # （元の画像を開くときと同じ扱いにするため）
-        decision = "allow" if _is_within(path, cwd) else "ask"
+        # 権限の規則は差し替えた後のパスで判定されるため、元の画像に掛けた拒否・確認の規則
+        # （例: 確認用画像の読み取り拒否）が効かなくなる。すり抜けないよう、毎回利用者に確認する
         return {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "permissionDecision": decision,
+                "permissionDecision": "ask",
                 "permissionDecisionReason": (
-                    f"screenshot-masker がマスクした写しに差し替えました: {summary}"
+                    f"screenshot-masker が機密を見つけたため、マスクした写しを開きます: {summary}"
                 ),
                 "updatedInput": {**tool_input, "file_path": str(masked)},
                 "additionalContext": (
@@ -268,6 +289,15 @@ def main(argv: Sequence[str], ocr: OcrFunction) -> int:
         output = failure_output(event, str(error))
     except (OSError, UnidentifiedImageError):
         output = failure_output(event, "画像を開けませんでした")
+    except Exception as error:
+        # 想定外の例外（巨大な画像の DecompressionBombError など）でも素通りさせない。
+        # 例外で終了すると終了コード 1 になり、フックでは「止めない」扱いになるため
+        output = failure_output(event, f"予期しないエラーが起きました（{type(error).__name__}）")
+        if output is None:
+            print(
+                f"エラー: 予期しないエラーが起きました（{type(error).__name__}）", file=sys.stderr
+            )
+            return EXIT_ERROR
 
     if output is not None:
         print(json.dumps(output, ensure_ascii=False))

@@ -133,7 +133,8 @@ def test_mask_mode_substitutes_masked_copy(
     assert code == 0
     assert output is not None
     specific = output["hookSpecificOutput"]
-    assert specific["permissionDecision"] == "allow"
+    # 差し替えると元の画像に掛けた権限の規則が効かなくなるので、毎回利用者に確認する
+    assert specific["permissionDecision"] == "ask"
     masked = Path(specific["updatedInput"]["file_path"])
     assert specific["updatedInput"]["limit"] == 10  # 変えない項目もそのまま渡す
     assert masked != image
@@ -202,6 +203,30 @@ def test_read_is_denied_when_image_is_broken(
     assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+def test_read_is_denied_on_unexpected_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # 想定外の例外で終了すると、フックでは「止めない」扱いになるため、止める出力を返す
+    def broken_ocr(image: Image.Image, lang: str) -> list[Word]:
+        raise RuntimeError("boom")
+
+    image = make_image(tmp_path / "shot.png")
+    code, output, _ = run_hook(monkeypatch, capsys, read_payload(image, tmp_path), broken_ocr)
+    assert code == 0
+    assert output is not None
+    assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_read_is_denied_for_decompression_bomb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    image = make_image(tmp_path / "shot.png")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)  # 400x200 を巨大な画像として扱わせる
+    _, output, _ = run_hook(monkeypatch, capsys, read_payload(image, tmp_path), email_ocr)
+    assert output is not None
+    assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
 def test_read_is_denied_when_config_is_invalid(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -250,6 +275,31 @@ def test_prompt_path_with_escaped_spaces(
     _, output, _ = run_hook(
         monkeypatch, capsys, prompt_payload(f"見て {escaped}", tmp_path), email_ocr
     )
+    assert output is not None
+    assert output["decision"] == "block"
+
+
+@pytest.mark.parametrize(
+    ("name", "prompt"),
+    [
+        # macOS のスクリーンショットの既定名のように、空白をエスケープせずに書いたパス
+        ("スクリーンショット 2026-11-08 10.15.30.png", "見て {path} の内容"),
+        # macOS が名前に使う特殊な空白（U+202F）
+        ("Screenshot 2026-11-08 at 10.15.30" + chr(0x202F) + "AM.png", "これ {path}"),
+        ("Screenshot (1).png", "見て {path}"),
+        ("shot.png", "見て「{path}」を説明して"),
+    ],
+)
+def test_prompt_paths_with_spaces_and_brackets(
+    name: str,
+    prompt: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    image = make_image(tmp_path / "Desktop" / name)
+    payload = prompt_payload(prompt.format(path=image), tmp_path)
+    _, output, _ = run_hook(monkeypatch, capsys, payload, email_ocr)
     assert output is not None
     assert output["decision"] == "block"
 
