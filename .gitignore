@@ -6,5 +6,19 @@ __pycache__/
 .ruff_cache/
 dist/
 /masked/
-/masked_preview/
 /annotated/
+# --preview の確認用画像（マスク前の文字が残る）。-o で出力先を変えても <出力先>_preview/ になる
+*_preview/
+
+# 個人の設定（案件コードやドメインが入りうる）
+/screenshot-masker.toml
+.claude/settings.local.json
+
+# OS
+.DS_Store
+
+# 実際のスクリーンショット・出力の誤コミット防止（管理する画像は examples/ だけ）
+*.png
+*.jpg
+*.jpeg
+!/examples/*.png
