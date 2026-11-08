@@ -19,6 +19,14 @@ DEFAULT_CONFIG_PATHS: tuple[Path, ...] = (
     Path.home() / ".config" / "screenshot-masker" / "config.toml",
 )
 
+# 各テーブルで使える項目。綴りの誤りで設定が効かないまま進むのを防ぐため、これ以外はエラーにする
+# （[annotate] は style.merge_style が同じ検査をする）
+TOP_LEVEL_KEYS = ("ocr", "mask", "detect", "annotate")
+OCR_KEYS = ("lang",)
+MASK_KEYS = ("method", "padding", "blur_radius", "fill_color")
+DETECT_KEYS = ("disabled", "allowed_domains", "custom")
+CUSTOM_KEYS = ("name", "pattern")
+
 
 class ConfigError(Exception):
     """設定ファイルの内容が正しくないとき。メッセージは利用者向け。"""
@@ -57,6 +65,14 @@ def _expect_table(data: dict[str, Any], key: str) -> dict[str, Any]:
     return value
 
 
+def _reject_unknown_keys(table: dict[str, Any], allowed: tuple[str, ...], where: str) -> None:
+    unknown = sorted(set(table) - set(allowed))
+    if unknown:
+        raise ConfigError(
+            f"{where} に不明な項目 {', '.join(unknown)}（使える項目: {', '.join(allowed)}）"
+        )
+
+
 def _expect_string_list(table: dict[str, Any], key: str, section: str) -> tuple[str, ...]:
     value = table.get(key, [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
@@ -65,6 +81,7 @@ def _expect_string_list(table: dict[str, Any], key: str, section: str) -> tuple[
 
 
 def _parse_mask(table: dict[str, Any]) -> MaskSettings:
+    _reject_unknown_keys(table, MASK_KEYS, "[mask]")
     defaults = MaskSettings()
     method = table.get("method", defaults.method)
     if method not in ("blur", "fill"):
@@ -88,6 +105,7 @@ def _parse_custom(table: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     for position, entry in enumerate(entries, start=1):
         if not isinstance(entry, dict):
             raise ConfigError(f"[[detect.custom]] の {position} 番目がテーブルではありません")
+        _reject_unknown_keys(entry, CUSTOM_KEYS, f"[[detect.custom]] の {position} 番目")
         name = entry.get("name")
         pattern = entry.get("pattern")
         if not isinstance(name, str) or not name:
@@ -118,11 +136,14 @@ def _parse_annotate(data: dict[str, Any], mask: MaskSettings) -> Style:
 
 def parse_config(data: dict[str, Any]) -> Config:
     """TOML を読み込んだ辞書から Config を作る。"""
+    _reject_unknown_keys(data, TOP_LEVEL_KEYS, "設定ファイル")
     ocr = _expect_table(data, "ocr")
+    _reject_unknown_keys(ocr, OCR_KEYS, "[ocr]")
     lang = ocr.get("lang", Config.ocr_lang)
     if not isinstance(lang, str) or not lang:
         raise ConfigError("[ocr] lang は文字列で指定してください（例: jpn+eng）")
     detect_table = _expect_table(data, "detect")
+    _reject_unknown_keys(detect_table, DETECT_KEYS, "[detect]")
     custom_patterns = _parse_custom(detect_table)
     disabled = _expect_string_list(detect_table, "disabled", "detect")
     known_kinds = set(DEFAULT_KINDS) | {name for name, _ in custom_patterns}

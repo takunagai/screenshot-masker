@@ -79,6 +79,14 @@ def test_missing_default_config_returns_defaults(
         ({"detect": {"custom": [{"name": "x", "pattern": "("}]}}, "正規表現"),
         ({"detect": {"custom": [{"pattern": "x"}]}}, "name"),
         ({"ocr": "jpn"}, "[ocr]"),
+        ({"unknown": {"x": 1}}, "設定ファイル に不明な項目 unknown"),
+        ({"ocr": {"language": "eng"}}, "[ocr] に不明な項目 language"),
+        ({"mask": {"colour": "#000000"}}, "[mask] に不明な項目 colour"),
+        ({"detect": {"allowed_domain": ["example.com"]}}, "[detect] に不明な項目 allowed_domain"),
+        (
+            {"detect": {"custom": [{"name": "x", "pattern": "x", "flags": "i"}]}},
+            "1 番目 に不明な項目 flags",
+        ),
     ],
 )
 def test_invalid_config(data: dict[str, object], message: str) -> None:
@@ -103,3 +111,10 @@ def test_example_config_is_valid() -> None:
     config = load_config(example)
     assert config.allowed_domains == ("zenn.dev", "note.com")
     assert config.rules()[-1].kind == "project_code"
+
+
+def test_article_example_config_is_valid() -> None:
+    example = Path(__file__).parent.parent / "examples" / "article.toml"
+    config = load_config(example)
+    assert config.mask.blur_radius == 12
+    assert config.annotate_style["label"]["background"] == "#1F2937E6"
