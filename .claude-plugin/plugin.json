@@ -1,0 +1,10 @@
+{
+  "name": "screenshot-masker",
+  "description": "スクリーンショット内の機密情報を OCR で見つけてマスクする CLI（screenshot-masker）を、AI エージェントが安全に使うためのスキル",
+  "author": {
+    "name": "Taku Nagai"
+  },
+  "repository": "https://github.com/takunagai/screenshot-masker",
+  "license": "Apache-2.0",
+  "keywords": ["screenshot", "redact", "mask", "ocr", "blog"]
+}

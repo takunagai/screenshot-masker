@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 dist/
+# claude plugin eval の実行結果
+/evals/results/
 /masked/
 /annotated/
 # --preview の確認用画像（マスク前の文字が残る）。-o で出力先を変えても <出力先>_preview/ になる

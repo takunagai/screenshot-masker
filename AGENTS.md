@@ -58,12 +58,21 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 - テストと `examples/` の値は例示用だけを使う（`example.com`、`192.0.2.0/24` などの文書用アドレス、`sk-test-…` のような架空のトークン）。実在のメールアドレス・トークン・実際のスクリーンショットをリポジトリに入れない
 - `.gitignore` は `examples/*.png` 以外の画像（png / jpg / jpeg）をすべて除外している。説明用の画像を別の場所に足すときは `!` の例外行を足す。`git add -f` で除外を回避しない
 
+## 同梱のスキル（Claude Code プラグイン）
+
+- リポジトリのルートが Claude Code のプラグイン（`.claude-plugin/plugin.json`）。配布用のカタログ（マーケットプレイス `takunagai`）は別リポジトリ `takunagai/claude-plugins` にあり、このリポジトリを `github` ソースで参照している。プラグイン名 `screenshot-masker` はカタログの登録名と一致させたまま変えない（変えると既存のインストールが壊れる）
+- スキルは `skills/mask-screenshots/SKILL.md`。Codex には同じフォルダを `~/.agents/skills/` に置いて使う。手元で試すときは `claude --plugin-dir .` で読み込める
+- CLI の挙動（オプション・出力形式・終了コード・設定項目・確認用画像の場所）を変えたら、`SKILL.md` も同じコミットで直す
+- `plugin.json` には `version` を書かない。書くと値を上げるまで利用者に変更が届かないため、コミットごとに更新が届く設定にしている
+- スキルを変えたら `claude plugin validate .` と `claude plugin eval . --trust-plugin --no-publish` を通す。eval は `evals/<ケース名>/`（`prompt.md` と `graders/`）にあり、1 回の実行ごとにモデルを呼ぶので費用がかかる。結果は `evals/results/`（Git 管理外）
+- 実行される環境では、プラグイン以外のユーザー設定・CLAUDE.md・`.claude/` は読まれない。eval の採点がこのリポジトリの `.claude/settings.json` に頼らないようにする
+
 ## このツールでスクリーンショットを処理するとき
 
 エージェントが利用者に頼まれて実際の画像をマスクする場合:
 
 - 元の画像と `*_preview/` の画像を開かない（Read・画像表示・OCR の結果表示を含む）。開くと機密がモデルの文脈と会話ログに入る。判断は標準出力（種類・位置だけ）と終了コードで行う
-- 画像を見て確かめる必要があるときは、マスク済みの出力だけを見る。`--preview` の画像の目視は人間に任せる
+- 画像の目視は人間に任せる。マスク済みの出力でも、OCR が見落とした機密はそのまま写っているので、必要が無い限り開かない
 - 終了コード 1 は「検出してマスクした」という意味。失敗として再実行しない
 - 検出 0 件は安全の証明ではない（OCR の見落としがある）。公開前に人間が目視するよう伝える
 - Claude Code では `.claude/settings.json` が `*_preview/` 配下の読み取りを拒否する。Codex など他のエージェントにはこの制限が効かないので、上の規律を自分で守る

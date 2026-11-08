@@ -368,7 +368,43 @@ Claude Code や Codex などの AI エージェントにスクリーンショッ
 
 - 結果の判断は、標準出力（種類と位置だけ）と終了コードで足ります。画像を開く必要はありません
 - 終了コード `1` は「検出してマスクした」という意味です。失敗として再実行させないでください
-- `--preview` の確認用画像を目で確かめるのは人間の役目です。エージェントが見てよいのはマスク済みの出力だけです
+- 画像を目で確かめるのは人間の役目です。マスク済みの画像でも、OCR が見落とした機密はそのまま写っているため、エージェントには必要が無い限り開かせないでください
+
+### スキルを入れる（おすすめ）
+
+この使い方をエージェントに教えるスキル（[`skills/mask-screenshots/SKILL.md`](skills/mask-screenshots/SKILL.md)）を同梱しています。入れておくと、「記事に載せるスクショの個人情報を隠して」のような依頼で自動的に読み込まれ、上の規律に沿って処理します。ツール本体（[導入](#導入)）とは別に入れてください。
+
+**Claude Code**（プラグインとして配布しています。ターミナルで実行）
+
+```sh
+# プラグイン集（マーケットプレイス takunagai）を登録する。最初の 1 回だけ
+claude plugin marketplace add takunagai/claude-plugins
+
+# スキルを入れる
+claude plugin install screenshot-masker@takunagai
+```
+
+| 操作 | コマンド |
+| --- | --- |
+| 更新 | `claude plugin update screenshot-masker@takunagai` |
+| 削除 | `claude plugin uninstall screenshot-masker@takunagai` |
+
+- Claude Code 2.1.292 以降なら、登録とインストールを 1 行で行えます: `claude plugin install screenshot-masker --marketplace takunagai/claude-plugins`（セッションの中では `/plugin install screenshot-masker --marketplace takunagai/claude-plugins`。こちらは 2.1.275 以降）
+- 更新は自動では届きません。`/plugin` の Marketplaces で `takunagai` を選び、自動更新を有効にすることもできます
+- GitHub の SSH 鍵を設定していない場合は、`CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` を環境変数に設定してください（セッションの中からのインストールと更新が HTTPS で行われます）
+- リポジトリが非公開の場合は、GitHub の認証情報が保存済みである必要があります（`gh auth login` の後に `gh auth setup-git`）
+
+**Codex**（スキルのフォルダを `~/.agents/skills/` に置く）
+
+```sh
+git clone https://github.com/takunagai/screenshot-masker.git
+mkdir -p ~/.agents/skills
+cp -R screenshot-masker/skills/mask-screenshots ~/.agents/skills/
+```
+
+スキルが認識されない場合は Codex を再起動してください。更新するときは、`git pull` してから同じ `cp` をやり直します。
+
+### スキルを使わない場合
 
 記事を書くリポジトリなど、このツールを使う側の指示ファイル（`AGENTS.md` / `CLAUDE.md`）に、次のように書いておくと伝わります。
 
@@ -424,6 +460,13 @@ uv run pytest
 ```
 
 Tesseract（`jpn+eng`）が入っていない環境では、実際の OCR を使うテスト（`tests/test_ocr_integration.py`）は skip されます。検出ロジック（`src/screenshot_masker/detect.py`）は OCR から切り離した純関数で、単語と位置のリストを入力にテストしています。
+
+同梱のスキルは、Claude Code のプラグインの eval で確かめます（実行のたびにモデルを呼ぶため、プランの利用枠か API の料金を消費します）。
+
+```sh
+claude plugin validate .
+claude plugin eval . --trust-plugin --no-publish
+```
 
 構成・テストの書き方・壊してはいけない性質は [AGENTS.md](AGENTS.md) を参照してください。テストや例には、実在のメールアドレスやトークン、実際のスクリーンショットを使わないでください。
 
