@@ -1,2 +1,1 @@
-def hello() -> str:
-    return "Hello from screenshot-masker!"
+"""スクリーンショット内の機密情報を OCR で見つけてぼかし、注釈を描き込む CLI。"""

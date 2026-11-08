@@ -22,6 +22,7 @@
 - [困ったとき](#困ったとき)
 - [限界](#限界)
 - [開発](#開発)
+- [ライセンス](#ライセンス)
 
 ## 必要なもの
 
@@ -217,7 +218,7 @@ pattern = 'PRJ-\d{4}'
 
 - `allowed_domains` は `url` にだけ効きます。`claude.ai/code` の URL は `claude` として別に検出されるため、`claude.ai` を許可しても隠れます（残したい場合は `disabled = ["claude"]`）
 - `[[detect.custom]]` の `pattern` は Python の正規表現です。TOML ではシングルクォートで囲むと `\` をそのまま書けます
-- 不正な値（`method` の綴り、色の形式、負の数など）はエラーで止まります。一方、`[ocr]`・`[mask]`・`[detect]` に書いた知らない項目名は無視されるため、項目名の綴りの誤りは設定が効かないまま進みます（`[annotate]` の知らない項目名はエラーになります）
+- 知らない項目名や不正な値（`method` の綴り、色の形式、負の数など）はエラーで止まります（綴りの誤りで設定が効かないまま進むのを防ぐため）
 
 ## 注釈を付ける（annotate）
 
@@ -420,3 +421,9 @@ uv run pytest
 Tesseract（`jpn+eng`）が入っていない環境では、実際の OCR を使うテスト（`tests/test_ocr_integration.py`）は skip されます。検出ロジック（`src/screenshot_masker/detect.py`）は OCR から切り離した純関数で、単語と位置のリストを入力にテストしています。
 
 構成・テストの書き方・壊してはいけない性質は [AGENTS.md](AGENTS.md) を参照してください。テストや例には、実在のメールアドレスやトークン、実際のスクリーンショットを使わないでください。
+
+## ライセンス
+
+[Apache License 2.0](LICENSE) で公開しています。Copyright 2026 Taku Nagai
+
+OCR には別途インストールする [Tesseract](https://github.com/tesseract-ocr/tesseract)（Apache License 2.0）を使います。

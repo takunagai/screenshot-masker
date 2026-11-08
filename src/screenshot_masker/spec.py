@@ -108,7 +108,8 @@ def _parse_items(
 def parse_spec(data: object, base_dir: Path, base_style: Style | None = None) -> Spec:
     """読み込んだ指示データを検査して Spec にする。
 
-    スタイルの重なり順: 既定値 < base_style（--style）< 指示ファイルの style < 各指示の項目
+    スタイルの重なり順: 既定値 < base_style（設定ファイルの [annotate]）< 指示ファイルの style
+    < 各指示の項目
     """
     if not isinstance(data, dict):
         raise SpecError("指示ファイルの最上位はキーと値の組（マッピング）で書いてください")

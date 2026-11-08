@@ -46,7 +46,7 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 - **確認用画像（`<出力先>_preview/`）はマスク前の文字を含む。** 接尾辞 `PREVIEW_DIR_SUFFIX` を変えるなら `.gitignore` と `.claude/settings.json` も揃える（[docs/AIエージェントの読み取り制限.md](docs/AIエージェントの読み取り制限.md)）
 - マスクはモザイク化してからぼかし、半径を範囲の高さの半分以上に引き上げる。復元しやすい処理に弱めない
 - 終了コード: 0 検出なし / 1 検出あり / 2 エラー。1 はエラーではない
-- 指示ファイルと設定ファイルの `[annotate]` は、未知の項目をエラーにする（綴りの誤りを見逃さないため）。指示の項目を足すときは `spec.GEOMETRY_KEYS`・`spec.REQUIRED_KEYS`・`style.DEFAULT_STYLE` と README の表を揃える。なお `[ocr]`・`[mask]`・`[detect]` の未知の項目は現状では無視される
+- 設定ファイル・指示ファイルの未知の項目はエラーにする（綴りの誤りを見逃さないため）。設定の項目を足すときは `config.py` の `*_KEYS`、指示の項目を足すときは `spec.GEOMETRY_KEYS`・`spec.REQUIRED_KEYS`・`style.DEFAULT_STYLE` を、README の表・例とあわせて揃える
 - YAML は `yaml.safe_load` だけで読む
 
 ## テスト
@@ -71,3 +71,4 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 - コメント・docstring・利用者向けメッセージは日本語。コミットメッセージは日本語の Conventional Commits
 - ruff の `allowed-confusables` で全角の `（`・`）`・`：` を許可している
 - 利用者から見える挙動（オプション・設定項目・検出する種類・出力形式・終了コード）を変えたら README も更新する
+- ライセンスは Apache-2.0（`LICENSE`）。依存を足すときは、Apache-2.0 と組み合わせられるライセンスか確かめる
