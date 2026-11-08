@@ -122,3 +122,21 @@ def test_article_example_config_is_valid() -> None:
     config = load_config(example)
     assert config.mask.blur_radius == 12
     assert config.annotate_style["label"]["background"] == "#1F2937E6"
+
+
+def test_review_before_annotate_defaults_to_false() -> None:
+    assert parse_config({}).should_review_before_annotate is False
+
+
+def test_review_before_annotate_can_be_enabled() -> None:
+    config = parse_config({"agent": {"review_before_annotate": True}})
+    assert config.should_review_before_annotate is True
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [{"review_before_annotate": "yes"}, {"review_before_annotate": 1}, {"review": True}],
+)
+def test_invalid_agent_table_is_rejected(agent: dict[str, object]) -> None:
+    with pytest.raises(ConfigError, match=r"\[agent\]"):
+        parse_config({"agent": agent})

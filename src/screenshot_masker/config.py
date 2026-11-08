@@ -21,8 +21,10 @@ DEFAULT_CONFIG_PATHS: tuple[Path, ...] = (
 
 # 各テーブルで使える項目。綴りの誤りで設定が効かないまま進むのを防ぐため、これ以外はエラーにする
 # （[annotate] は style.merge_style が同じ検査をする）
-TOP_LEVEL_KEYS = ("ocr", "mask", "detect", "annotate")
+TOP_LEVEL_KEYS = ("ocr", "mask", "detect", "annotate", "agent")
 OCR_KEYS = ("lang",)
+# [agent] は AI エージェント（同梱のスキル）が読む項目。CLI 自体の動作は変えない
+AGENT_KEYS = ("review_before_annotate",)
 MASK_KEYS = ("method", "padding", "blur_radius", "fill_color")
 DETECT_KEYS = ("disabled", "enabled", "allowed_domains", "custom")
 CUSTOM_KEYS = ("name", "pattern")
@@ -51,6 +53,9 @@ class Config:
     custom_patterns: tuple[tuple[str, str], ...] = ()
     # annotate サブコマンドの見た目の既定値（[annotate] テーブル）
     annotate_style: Style = field(default_factory=lambda: merge_style(DEFAULT_STYLE, None, ""))
+    # [agent] review_before_annotate。エージェントがマスク済み画像を開いて注釈を描く前に、
+    # 人の目視を挟むかどうか。CLI はマスクの集計行で知らせるだけ
+    should_review_before_annotate: bool = False
 
     def rules(self) -> list[Rule]:
         return build_rules(
@@ -137,6 +142,14 @@ def _parse_annotate(data: dict[str, Any], mask: MaskSettings) -> Style:
         raise ConfigError(str(error)) from error
 
 
+def _parse_agent(table: dict[str, Any]) -> bool:
+    _reject_unknown_keys(table, AGENT_KEYS, "[agent]")
+    value = table.get("review_before_annotate", Config.should_review_before_annotate)
+    if not isinstance(value, bool):
+        raise ConfigError("[agent] review_before_annotate は true か false で指定してください")
+    return value
+
+
 def parse_config(data: dict[str, Any]) -> Config:
     """TOML を読み込んだ辞書から Config を作る。"""
     _reject_unknown_keys(data, TOP_LEVEL_KEYS, "設定ファイル")
@@ -177,6 +190,7 @@ def parse_config(data: dict[str, Any]) -> Config:
         enabled_kinds=enabled,
         allowed_domains=_expect_string_list(detect_table, "allowed_domains", "detect"),
         custom_patterns=custom_patterns,
+        should_review_before_annotate=_parse_agent(_expect_table(data, "agent")),
     )
 
 

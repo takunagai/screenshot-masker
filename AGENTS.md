@@ -85,5 +85,6 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 - コメント・docstring・利用者向けメッセージは日本語。コミットメッセージは日本語の Conventional Commits
 - ruff の `allowed-confusables` で全角の `（`・`）`・`：` を許可している
 - 利用者から見える挙動（オプション・設定項目・検出する種類・出力形式・終了コード）を変えたら、`docs/` の該当ページと README（特徴・はじめる・コマンドで使う に関わるとき）も更新する。README は入口として短く保ち、詳細は `docs/` に書く
-- `docs/images/before-after.png` は `examples/sample.png` とそのマスク結果の一部を並べた画像。検出やマスクの見た目を変えたら作り直す
+- `docs/images/before-after.png` は `examples/sample.png` と、そのマスク結果に注釈（保存ボタンの枠・番号バッジ・矢印・ラベル）を描いた画像の上部を横に並べたもの。検出・マスク・注釈の見た目を変えたら作り直す
+- `[agent]` の項目は同梱のスキルが読むもので、CLI のマスク・注釈の動作は変えない。`review_before_annotate = true` のときだけ、マスクの集計の後に `cli.REVIEW_BEFORE_ANNOTATE_NOTICE` の行を標準エラー出力に出し、スキルはその行を見て注釈の前に人の目視を挟む。文言を変えるときは `SKILL.md` の 5. も揃える
 - ライセンスは Apache-2.0（`LICENSE`）。依存を足すときは、Apache-2.0 と組み合わせられるライセンスか確かめる

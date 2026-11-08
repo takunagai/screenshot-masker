@@ -29,6 +29,13 @@ allowed_domains = ["zenn.dev", "note.com"]
 name = "project_code"
 pattern = 'PRJ-\d{4}'
 
+# AI エージェント（同梱のスキル）向けの設定。CLI のマスク・注釈の動作は変えない
+[agent]
+# false（既定）: 注釈を頼まれたら、エージェントはマスク直後の画像を開いて位置を決める。
+#   OCR が見落とした機密や、検出しない住所・氏名もモデルに渡る
+# true: 注釈を描く前に、マスク済み画像の目視をあなたに頼み、OK が出てから開く
+review_before_annotate = false
+
 # annotate サブコマンドの見た目の既定値（省略した項目は組み込みの既定値）
 # 長さは 1 倍の画像での論理ピクセル。画像の幅から倍率を決めて掛ける
 [annotate]

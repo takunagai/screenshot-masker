@@ -189,3 +189,21 @@ def test_fill_method_paints_region(tmp_path: Path) -> None:
     main([str(source), "--method", "fill", "-o", str(tmp_path / "out")], ocr=ocr)
     with Image.open(tmp_path / "out" / "shot.png") as image:
         assert image.convert("RGB").getpixel((5, 5)) == (0, 0, 0)
+
+
+@pytest.mark.parametrize("is_enabled", [True, False])
+def test_review_before_annotate_notice(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], is_enabled: bool
+) -> None:
+    config = tmp_path / "c.toml"
+    value = "true" if is_enabled else "false"
+    config.write_text(f"[agent]\nreview_before_annotate = {value}\n", encoding="utf-8")
+    source = make_image(tmp_path / "shot.png")
+    code = main(
+        [str(source), "-c", str(config), "-o", str(tmp_path / "out")],
+        ocr=fake_ocr_for({400: [f"mail {SECRET_EMAIL}"]}),
+    )
+    assert code == EXIT_DETECTED
+    output = capsys.readouterr()
+    assert ("review_before_annotate = true" in output.err) is is_enabled
+    assert SECRET_EMAIL not in output.out + output.err

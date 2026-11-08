@@ -33,6 +33,10 @@ DEFAULT_OUTPUT_DIR = Path("masked")
 PREVIEW_DIR_SUFFIX = "_preview"
 ANNOTATE_COMMAND = "annotate"
 HOOK_COMMAND = "hook"
+REVIEW_BEFORE_ANNOTATE_NOTICE = (
+    "注意: 注釈を描く前に、マスク済み画像を人が目視で確かめる設定です"
+    "（[agent] review_before_annotate = true）"
+)
 
 OcrFunction = Callable[[Image.Image, str], list[Word]]
 
@@ -244,6 +248,9 @@ def main(argv: Sequence[str] | None = None, ocr: OcrFunction = run_ocr) -> int:
     if preview_dir is not None:
         summary += f"。確認用画像（マスク前の文字が残るので公開しないこと）: {preview_dir}"
     print(summary, file=sys.stderr)
+    if config.should_review_before_annotate:
+        # 同梱のスキルはこの行を見て、注釈の前に人の目視を挟む
+        print(REVIEW_BEFORE_ANNOTATE_NOTICE, file=sys.stderr)
 
     if has_error:
         return EXIT_ERROR
