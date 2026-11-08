@@ -97,6 +97,10 @@ def test_ordinary_text_is_not_detected(line: str) -> None:
         ("〒100-0000", ["jp_postal_code"]),
         ("住所 000-0000 東京都", ["jp_postal_code"]),
         ("DB_PASSWORD=hunter2", ["secret_assignment"]),
+        ("DB_PASSWORD=$ecret123", ["secret_assignment"]),  # $ で始まる本物のパスワード
+        ("api_key=<abc>def", ["secret_assignment"]),  # < で始まるだけでプレースホルダーではない
+        ("REDIS_URL=redis://:pa55word@localhost:6379", ["connection_string"]),
+        ("mongodb://app:pa/ss@word@localhost/db", ["connection_string"]),
         ("api_key: abc123", ["secret_assignment"]),
         ('"client_secret": "abc123"', ["secret_assignment"]),
         ("glpat-AbCdEfGhIjKlMnOpQrSt", ["token"]),
@@ -122,6 +126,9 @@ def test_added_default_kinds_are_detected(line: str, expected: list[str]) -> Non
         "00-1234-5678",
         "password=****",
         "password=${DB_PASSWORD}",
+        "password=$DB_PASSWORD",
+        "password={{ db_password }}",
+        "password=%DB_PASSWORD%",
         "token: string",
         "api_key=<your-api-key>",
         "Account: 123456789012",

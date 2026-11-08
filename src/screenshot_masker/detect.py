@@ -94,8 +94,9 @@ _CLAUDE_PATTERN = re.compile(
 )
 _PRIVATE_KEY_PATTERN = re.compile(r"-{3,}\s*BEGIN [A-Z0-9 ]*PRIVATE KEY\s*-{3,}")
 # 認証情報入りの接続文字列（scheme://ユーザー:パスワード@ホスト）
+# ユーザー名は空でもよく（redis://:pass@host）、パスワードは最後の @ の手前まで（/ や @ を含みうる）
 _CONNECTION_STRING_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]+://[^\s:@/]+:[^\s@/]+@\S+"
+    r"(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]+://[^\s:@/]*:\S+@\S+"
 )
 # OCR は数字の途中やコロンの前後に空白を入れることがあるので、1 文字分の空白を許す
 _AWS_ARN_PATTERN = re.compile(r"arn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:\s?(?:\d\s?){11}\d:\S*")
@@ -208,6 +209,14 @@ _NON_SECRET_VALUES = frozenset(
 )
 # 伏せ字（****、••••、xxxx など）だけの値
 _MASKED_VALUE_PATTERN = re.compile(r"[*•●・xX.…]+")
+# 値全体が変数の参照・プレースホルダーのもの（$VAR、${var}、<your-key>、{{ var }}、%VAR%）。
+# 先頭の 1 文字だけで判断すると、$ で始まる本物のパスワードを見逃すため、全体の形で判定する。
+# 括弧なしの $ は環境変数の慣習どおり大文字だけを参照とみなす（$ecret123 は秘密として扱う）。
+# 値は空白で切れるので、{{ や {% で始まるもの（テンプレートの開始）もプレースホルダーとみなす
+_PLACEHOLDER_VALUE_PATTERN = re.compile(
+    r"\$[A-Z_][A-Z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\}|<[^<>]+>|\{[{%].*"
+    r"|%[A-Za-z_][A-Za-z0-9_]*%"
+)
 _PHONE_PREFIXES_11_DIGITS = ("020", "050", "060", "070", "080", "090", "0800")
 
 
@@ -291,7 +300,7 @@ def _is_secret_value(text: str) -> bool:
     value = re.split(r"[:=]", text, maxsplit=1)[1].strip().strip("\"'")
     if not value or _MASKED_VALUE_PATTERN.fullmatch(value):
         return False
-    if value.startswith(("$", "<", "{", "%")):
+    if _PLACEHOLDER_VALUE_PATTERN.fullmatch(value):
         return False
     return value.lower() not in _NON_SECRET_VALUES
 
