@@ -57,9 +57,6 @@ git clone https://github.com/takunagai/screenshot-masker.git
 cd screenshot-masker
 uv sync
 ```
-
-リポジトリが非公開の場合は、アクセス権のある GitHub アカウントで認証済みである必要があります。
-
 ### 3. 動作を確かめる
 
 架空の設定画面の画像（[`examples/sample.png`](examples/sample.png)）で、画像を書き出さずに検出だけを試します。
@@ -392,8 +389,6 @@ claude plugin install screenshot-masker@takunagai
 - Claude Code 2.1.292 以降なら、登録とインストールを 1 行で行えます: `claude plugin install screenshot-masker --marketplace takunagai/claude-plugins`（セッションの中では `/plugin install screenshot-masker --marketplace takunagai/claude-plugins`。こちらは 2.1.275 以降）
 - 更新は自動では届きません。`/plugin` の Marketplaces で `takunagai` を選び、自動更新を有効にすることもできます
 - GitHub の SSH 鍵を設定していない場合は、`CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` を環境変数に設定してください（セッションの中からのインストールと更新が HTTPS で行われます）
-- リポジトリが非公開の場合は、GitHub の認証情報が保存済みである必要があります（`gh auth login` の後に `gh auth setup-git`）
-
 **Codex**（スキルのフォルダを `~/.agents/skills/` に置く）
 
 ```sh
@@ -468,7 +463,7 @@ claude plugin validate .
 claude plugin eval . --trust-plugin --no-publish
 ```
 
-構成・テストの書き方・壊してはいけない性質は [AGENTS.md](AGENTS.md) を参照してください。テストや例には、実在のメールアドレスやトークン、実際のスクリーンショットを使わないでください。
+構成・テストの書き方・壊してはいけない性質は [AGENTS.md](AGENTS.md) を、公開範囲と公開前に確認したことは [docs/リポジトリの公開設定.md](docs/リポジトリの公開設定.md) を参照してください。テストや例には、実在のメールアドレスやトークン、実際のスクリーンショットを使わないでください。
 
 ## ライセンス
 
