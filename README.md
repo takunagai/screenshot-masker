@@ -456,6 +456,43 @@ cp -R screenshot-masker/skills/mask-screenshots ~/.agents/skills/
 
 最後の例のとおり、頼まれても機密が写った画像は開きません。この振る舞いは同梱の [eval](evals/) で確かめています。
 
+### 画像がエージェントに渡る前に止める（Claude Code のフック・任意）
+
+スキルは「開かない」という指示ですが、フックを入れると仕組みとして止められます。Claude Code が画像をモデルに渡す前に `screenshot-masker hook` が OCR で調べ、機密らしい文字列を見つけたら止めます。止めた理由には、ファイル名と検出の種類・件数だけを表示します。
+
+| 画像が渡る経路 | フックの動き |
+| --- | --- |
+| エージェントが画像ファイルを開く（Read） | 検出したら開かせない。`--on-detect mask` を付けると、マスクした写しに差し替えて開かせる |
+| プロンプトに画像のパスや `@画像.png` を書いて送る | 検出したら送信を止める（プロンプトは差し替えられないので、`mask` でも止める） |
+| クリップボードから貼り付けた画像（Ctrl+V） | **調べられない。** フックの入力に画像が含まれないため |
+| シェルのコマンドや MCP のツールが読む画像 | 対象外 |
+
+使うには、ツール本体（[導入](#導入)）を `uv tool install` で入れて `screenshot-masker` をコマンドとして使える状態にし、Claude Code の設定ファイル（全プロジェクトなら `~/.claude/settings.json`、このプロジェクトだけなら `.claude/settings.json`）に次を加えます。
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [{ "type": "command", "command": "screenshot-masker hook", "timeout": 60 }]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{ "type": "command", "command": "screenshot-masker hook", "timeout": 60 }]
+      }
+    ]
+  }
+}
+```
+
+- 検出したときに止めるのではなくマスクした写しを渡したいときは、Read の方の `command` を `screenshot-masker hook --on-detect mask` にします。写しは OS の一時フォルダの `screenshot-masker-hook-<利用者 ID>/` に、所有者だけが読める形で置かれます（他の利用者が先に作ったフォルダやシンボリックリンクだった場合は、使わずに止めます）。見落とした機密は写しにもそのまま残ります
+- 画像を調べられないとき（Tesseract が無い、画像を開けない、設定ファイルが不正など）も止めます
+- 既定では URL も検出するので、開発中の画面のスクショを見せる作業でも止まりやすくなります。止めたくない種類は、設定ファイルの `disabled` に書いて `screenshot-masker hook -c <設定ファイル>` で渡してください
+- 止めたプロンプトの文字列は、Claude Code の仕様でセッションの記録に残ります（画像の中身は送られません）
+- 2026-11-08 に Claude Code 2.1.319 で、プロンプトを止めること・Read を止めること・マスクした写しに差し替えることを、実際に確かめました。Codex には対応していません
+
 ### スキルを使わない場合
 
 記事を書くリポジトリなど、このツールを使う側の指示ファイル（`AGENTS.md` / `CLAUDE.md`）に、次のように書いておくと伝わります。

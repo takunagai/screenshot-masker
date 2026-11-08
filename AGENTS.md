@@ -30,6 +30,7 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 ```
 
 - `cli.main` は最初の引数が `annotate` なら `annotate_cli.main` に渡す。`annotate_cli` は `cli` の `plan_jobs`・`_load_image`・`_save_image`・`format_detection`・終了コード定数を再利用するため、`cli` 側では関数内で遅延 import している（循環 import の回避）。`_` 付きの非公開関数（`_load_image`・`_save_image`・`_report_error`）にも依存しているので、`cli` 側でこれらの名前や引数を変えるときは `annotate_cli` も直す
+- `cli.main` は最初の引数が `hook` なら `hook_cli.main` に渡す。Claude Code のフック（`PreToolUse` の Read と `UserPromptSubmit`）の入力 JSON を標準入力で受け、検出したら止める（`--on-detect mask` なら Read に限りマスクした写しへ `updatedInput` で差し替える）。調べられないときも止める（安全側に倒す）。出力は Claude Code が読む JSON なので、形を変えるときは公式の hooks のドキュメントで確かめ、実機（`claude -p --settings <フックの設定>`）で動作を確かめる
 - `main(argv, ocr=...)` で OCR 関数を差し替えられる。テストはこれでフェイクを渡す
 - `ocr.prepare_for_ocr` はグレースケール化・暗い背景の反転・autocontrast を行う。寸法を変えないので、OCR の座標は元画像の座標としてそのまま使う。`_load_image` は EXIF の向きを先に反映する（座標と保存画像を一致させるため）
 - `detect` は OCR に依存しない純関数。`Word.line_key` で行に組み立て、各行を「空白区切りで連結」と「隙間が行の高さ × `TIGHT_GAP_RATIO` 未満なら詰めて連結」の 2 通りで全ルールと照合する。同じ行で単語集合が既存の候補に含まれるものは捨てる（広い範囲が優先、同じ広さなら `build_rules` の並び順が優先順位）。照合の前に全角の英数字・記号を半角にそろえる（1 文字ずつの置き換えなので、文字と単語の位置の対応は崩れない）
