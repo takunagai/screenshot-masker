@@ -1,6 +1,6 @@
 # AGENTS.md
 
-このリポジトリで作業する AI コーディングエージェント（Claude Code・Codex など）への指示。利用者向けの説明は [README.md](README.md)。
+このリポジトリで作業する AI コーディングエージェント（Claude Code・Codex など）への指示。利用者向けの説明は [README.md](README.md)（入口）と [docs/](docs/)（詳細）。開発への参加の案内は [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 公開・共有する前のスクリーンショット（ブログ・README・マニュアル・SNS・Issue・資料など）から機密文字列を OCR（Tesseract）で見つけてマスクする CLI と、指示ファイル（YAML / JSON）から注釈を描く `annotate` サブコマンド。Python 3.12・uv・Pillow・pytesseract・PyYAML。
 
@@ -49,7 +49,7 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 - **確認用画像（`<出力先>_preview/`）はマスク前の文字を含む。** 接尾辞 `PREVIEW_DIR_SUFFIX` を変えるなら `.gitignore` と `.claude/settings.json` も揃える（[docs/AIエージェントの読み取り制限.md](docs/AIエージェントの読み取り制限.md)）
 - マスクはモザイク化してからぼかし、半径を範囲の高さの半分以上に引き上げる。復元しやすい処理に弱めない
 - 終了コード: 0 検出なし / 1 検出あり / 2 エラー。1 はエラーではない
-- 設定ファイル・指示ファイルの未知の項目はエラーにする（綴りの誤りを見逃さないため）。設定の項目を足すときは `config.py` の `*_KEYS`、指示の項目を足すときは `spec.GEOMETRY_KEYS`・`spec.REQUIRED_KEYS`・`style.DEFAULT_STYLE` を、README の表・例とあわせて揃える。注釈の種類（`type`）そのものを足すときは、さらに `style.ANNOTATION_TYPES`・`render.RENDERERS`（マスク系なら `spec.MASK_TYPES` も）を揃える
+- 設定ファイル・指示ファイルの未知の項目はエラーにする（綴りの誤りを見逃さないため）。設定の項目を足すときは `config.py` の `*_KEYS`、指示の項目を足すときは `spec.GEOMETRY_KEYS`・`spec.REQUIRED_KEYS`・`style.DEFAULT_STYLE` を、docs の表・例（設定は `docs/使い方.md`、指示は `docs/注釈を付ける.md`）とあわせて揃える。注釈の種類（`type`）そのものを足すときは、さらに `style.ANNOTATION_TYPES`・`render.RENDERERS`（マスク系なら `spec.MASK_TYPES` も）を揃える
 - YAML は `yaml.safe_load` だけで読む
 
 ## テスト
@@ -59,7 +59,7 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 - 検出を伴う CLI テストでは、`assert SECRET not in output.out + output.err` のように、一致した文字列が出力に出ないことも確かめる
 - 注釈は `tests/image_helpers.run` で描き、`changed_box`・`pixel` で画素を検査する
 - テストと `examples/` の値は例示用だけを使う（`example.com`、`192.0.2.0/24` などの文書用アドレス、`sk-test-…` のような架空のトークン）。実在のメールアドレス・トークン・実際のスクリーンショットをリポジトリに入れない
-- `.gitignore` は `examples/*.png` と `docs/images/*.png`（README の図）以外の画像（png / jpg / jpeg）をすべて除外している。説明用の画像を別の場所に足すときは `!` の例外行を足す。`git add -f` で除外を回避しない
+- `.gitignore` は `examples/*.png` と `docs/images/*.png`（README・docs の図）以外の画像（png / jpg / jpeg）をすべて除外している。説明用の画像を別の場所に足すときは `!` の例外行を足す。`git add -f` で除外を回避しない
 
 ## 同梱のスキル（Claude Code プラグイン）
 
@@ -84,5 +84,6 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 
 - コメント・docstring・利用者向けメッセージは日本語。コミットメッセージは日本語の Conventional Commits
 - ruff の `allowed-confusables` で全角の `（`・`）`・`：` を許可している
-- 利用者から見える挙動（オプション・設定項目・検出する種類・出力形式・終了コード）を変えたら README も更新する
+- 利用者から見える挙動（オプション・設定項目・検出する種類・出力形式・終了コード）を変えたら、`docs/` の該当ページと README（特徴・はじめる・コマンドで使う に関わるとき）も更新する。README は入口として短く保ち、詳細は `docs/` に書く
+- `docs/images/before-after.png` は `examples/sample.png` とそのマスク結果の一部を並べた画像。検出やマスクの見た目を変えたら作り直す
 - ライセンスは Apache-2.0（`LICENSE`）。依存を足すときは、Apache-2.0 と組み合わせられるライセンスか確かめる

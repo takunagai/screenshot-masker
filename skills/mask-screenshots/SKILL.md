@@ -97,4 +97,4 @@ pattern = 'PRJ-\d{4}'
 
 ## 5. 注釈（枠・番号・矢印など）を描くとき
 
-`screenshot-masker annotate <入力> -s <指示ファイル> --mask -o <出力先>` で、OCR のマスクをしてから注釈を描く。指示ファイルの書き方は `screenshot-masker annotate --help` と、リポジトリの README の「注釈を付ける（annotate）」を見る。座標はユーザーに聞くか、`units: ratio`（画像に対する 0〜1 の割合）で書く。
+`screenshot-masker annotate <入力> -s <指示ファイル> --mask -o <出力先>` で、OCR のマスクをしてから注釈を描く。指示ファイルの書き方は `screenshot-masker annotate --help` と、リポジトリのドキュメント（https://github.com/takunagai/screenshot-masker/blob/main/docs/注釈を付ける.md）を見る。座標はユーザーに聞くか、`units: ratio`（画像に対する 0〜1 の割合）で書く。

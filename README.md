@@ -1,448 +1,50 @@
 # screenshot-masker
 
-![screenshot-masker の概要図。元のスクショ（メール・APIキー・URLが写っている）から、OCR で機密らしい文字列を見つけ、ぼかした画像を別フォルダに書き出す（元の画像はそのまま）。必要なら annotate で、指示ファイルに従って枠・番号・矢印を描き込む。約束は「機密を書き残さない」「元画像は上書きしない」「パソコンの外に送らない」の 3 つ。使う場面はブログ・README・マニュアル・SNS・Issue・資料](docs/images/overview.png)
+![screenshot-masker の概要図。AI エージェントに「スクショの機密を隠して」と頼むと、エージェントは画像を開かず、OCR で読んだ結果の種類と位置だけを受け取り、ぼかした画像を別フォルダに書き出す（元の画像はそのまま）。最後は人が目で確認する。Claude Code のフックを入れると、機密入りの画像は AI に渡る前に止まる。約束は「機密を書き残さない」「元画像は上書きしない」「パソコンの外に送らない」の 3 つ。使う場面はブログ・README・マニュアル・SNS・Issue・資料](docs/images/overview.png)
+
+公開・共有する前のスクリーンショットから、メールアドレス・API キー・URL・ホームディレクトリのパスなどの機密を OCR で見つけてぼかすツールです。Claude Code や Codex に「記事に載せるスクショの個人情報を隠して」と頼むだけで、エージェントはマスク前の画像を開かずに処理し、最後の目視確認をあなたに頼みます。
 
 > [!IMPORTANT]
-> 使う前に、必ず[免責事項](#免責事項)を読んでください。OCR は文字を見落としたり、関係のない部分を隠したりすることがあり、検出が 0 件でも安全とは限りません。公開・共有する前に必ず人の目で確認し（[公開までの流れ](#公開までの流れ)）、最終的な判断は利用者が行ってください。
+> OCR は文字を見落とすことがあり、検出が 0 件でも安全とは限りません。公開・共有する前に必ず人の目で確かめてください（[免責事項](#免責事項)）。
 
-公開・共有する前のスクリーンショットから、見せてはいけない文字列（メールアドレス・API キー・URL・ホームディレクトリのパスなど）を OCR で見つけてぼかす CLI です。ブログ記事や README・マニュアル、SNS への投稿、Issue やバグ報告、資料への貼り付けなど、スクショを人に見せる前に使えます。注釈（枠・番号バッジ・矢印など）を描き込む `annotate` サブコマンドもあります。
+![架空のアプリの設定画面。上の元のスクショにはメールアドレスと API キーが写っており、下のマスク後の画像ではその 2 つだけがぼかされ、表示名や保存ボタンはそのまま残っている](docs/images/before-after.png)
 
-**Claude Code や Codex などの AI エージェント向けのスキルも同梱しています。** エージェントに「記事に載せるスクショの個人情報を隠して」と頼むと、元の画像や確認用の画像を開かない手順に沿って処理し、最後の目視確認をあなたに頼みます。Claude Code にはコマンド 2 行で入れられます（[AI エージェントから使う](#ai-エージェントから使う)）。
+## 特徴
 
-**Claude Code では、画像がエージェントに渡る前に止めるフックも用意しています（任意）。** エージェントが画像ファイルを開くときと、プロンプトに画像のパスを書いて送るときに OCR で調べ、機密らしい文字列を見つけたら止めます。止める代わりに、マスクした写しに差し替えることもできます。クリップボードから貼り付けた画像は調べられません（[画像がエージェントに渡る前に止める](#画像がエージェントに渡る前に止めるclaude-code-のフック任意)）。
+- **AI エージェントに任せられる。** 同梱のスキルが、元の画像や確認用画像を開かない手順をエージェントに教えます。エージェントは種類と位置だけを見て判断するので、画像に写った機密をモデルに渡さずに処理できます（Claude Code・Codex）
+- **画像がエージェントに渡る前に止める（任意）。** Claude Code のフックを入れると、エージェントが画像を開くときやプロンプトに画像のパスを書いたときに OCR で調べ、機密らしい文字列があれば止めます
+- **日本語のスクショに対応。** マイナンバー（検査用数字で確認）・電話番号・郵便番号など日本の形式を見分けます。API キー・トークン・`.env` の値・接続文字列・IP アドレスなど、開発者の画面に出るものも隠します（[検出する種類](docs/検出する種類.md)）
+- **機密を書き残さない。** 画面に出すのはファイル名・種類・位置だけで、見つけた文字列は表示もログ保存もしません。文字の読み取りもパソコンの中で行い、インターネットには接続しません
+- **元の画像はそのまま。** マスク済みの画像は別フォルダに書き出します。書き出した画像には、位置情報などの EXIF も引き継がれません
+- **注釈も描ける。** 枠・番号バッジ・矢印・ラベルを、指示ファイルから同じ見た目で描き込みます（[注釈を付ける](docs/注釈を付ける.md)）
 
-**日本語のスクショに対応しています。** 日本語と英語の文字を読み、日本の番号の形式も見分けて、次のものを隠します。
+## はじめる
 
-| 分類 | 検出するもの |
-| --- | --- |
-| 日本の個人情報 | マイナンバー（検査用数字で確認）、電話番号（固定・携帯・IP 電話・フリーダイヤル・`+81` 表記）、郵便番号 |
-| 連絡先・決済 | メールアドレス、クレジットカード番号（Luhn のチェックで確認） |
-| 開発者の画面 | API キー・トークン（GitHub・GitLab・AWS・Google・Stripe・Slack など）、`.env` のパスワードなど秘密の値、認証情報入りの接続文字列、秘密鍵、URL、IP アドレス（IPv4・IPv6）、MAC アドレス、AWS の ARN、ホームディレクトリのパス（macOS・Linux・Windows） |
-| 有効にしたときだけ | UUID、旅券番号の形、基礎年金番号の形 |
+macOS と Homebrew での手順です（他の環境は [使い方](docs/使い方.md#必要なもの)）。
 
-住所と氏名は検出しません。詳しい条件は [検出する種類](#検出する種類) にあります。
-
-- **見つけた機密を、どこにも書き残しません。** 画面に出すのはファイル名・種類・位置だけで、一致した文字列は表示しません。ログファイルも作りません
-- 元画像は上書きしません。マスク済み画像は別フォルダに書き出します（出力先が元画像と重なる指定はエラーで止まります）
-- 書き出す画像は再エンコードされるため、EXIF などのメタデータは引き継がれません
-
-機密が残りうる場所は、次の 2 つだけです。どちらもお使いのパソコンの中だけで、外部に送られることはありません（文字の読み取りもパソコンの中で行い、インターネットには接続しません）。
-
-- **確認用画像（`--preview` を付けたときだけ作られます）** ─ 見落としを確かめるために、わざとマスク前の文字を残した画像です。マスク済みの画像とは別のフォルダ（`<出力先>_preview/`）に出すので混ざりません。確認が済んだら消してください
-- **文字を読み取るときの一時ファイル** ─ 読み取りのあいだだけパソコンの一時フォルダに作られ、1 枚終わるごとに自動で消えます。途中で Ctrl+C で止めた場合も消えます。残るのは、強制終了や電源断で処理が急に切れたときだけです。気になる場合は、一時フォルダ（`$TMPDIR`）の `tess_` で始まるファイルを消してください
-
-## 目次
-
-- [必要なもの](#必要なもの)
-- [導入](#導入)
-- [公開までの流れ](#公開までの流れ)
-- [使い方](#使い方)
-- [検出する種類](#検出する種類)
-- [設定ファイル](#設定ファイル)
-- [注釈を付ける（annotate）](#注釈を付けるannotate)
-- [AI エージェントから使う](#ai-エージェントから使う)
-- [困ったとき](#困ったとき)
-- [限界](#限界)
-- [開発](#開発)
-- [免責事項](#免責事項)
-- [ライセンス](#ライセンス)
-
-## 必要なもの
-
-- macOS（動作確認済みの環境）。他の OS でも Tesseract と日本語の言語データがあれば動く想定ですが、確認していません
-- [Homebrew](https://brew.sh/)
-- Git
-- Python 3.12 以上（手元に無ければ、`uv` が `.python-version` に従って自動で用意します）
-
-## 導入
-
-### 1. Tesseract と uv を入れる
-
-```sh
-brew install tesseract tesseract-lang uv
-```
-
-`tesseract-lang` は日本語（`jpn`）などの言語データです。入ったかどうかは次のコマンドで確かめます。一覧に `jpn` と `eng` があれば準備できています。
-
-```sh
-tesseract --list-langs
-```
-
-### 2. リポジトリを取得して依存を入れる
-
-```sh
-git clone https://github.com/takunagai/screenshot-masker.git
-cd screenshot-masker
-uv sync
-```
-### 3. 動作を確かめる
-
-架空の設定画面の画像（[`examples/sample.png`](examples/sample.png)）で、画像を書き出さずに検出だけを試します。
-
-```sh
-uv run screenshot-masker examples/sample.png --dry-run
-```
-
-次のように 2 件（架空のメールアドレスと API キー）が表示されれば成功です。数値は環境によって少しずれることがあります。このとき終了コードは `1`（検出あり）になりますが、エラーではありません（[終了コード](#終了コード)）。
-
-```
-examples/sample.png	email	x=641 y=129 w=177 h=19
-examples/sample.png	token	x=641 y=189 w=179 h=15
-1 ファイル中 1 ファイルで 2 件検出
-```
-
-### コマンドとして入れる（任意）
-
-`uv run` を付けずに `screenshot-masker` と打てるようにします。以降の例の `uv run screenshot-masker` は `screenshot-masker` に読み替えてください。
-
-```sh
-# クローンしたフォルダで
-uv tool install .
-
-# クローンせずに入れる場合
-uv tool install git+https://github.com/takunagai/screenshot-masker
-```
-
-| 操作 | コマンド |
-| --- | --- |
-| 更新（クローンした場合は先に `git pull`） | `uv tool install --reinstall .` または `uv tool install --reinstall git+https://github.com/takunagai/screenshot-masker` |
-| 削除 | `uv tool uninstall screenshot-masker` |
-
-## 公開までの流れ
-
-初めて使うときは、この順に進めると見落としを防げます。
-
-1. **何が見つかるか確かめる。** 画像は書き出さず、検出結果だけを見ます
+1. ツール本体（文字を読む Tesseract と screenshot-masker）を入れます
 
    ```sh
-   uv run screenshot-masker ~/Desktop/screenshots --dry-run
+   brew install tesseract tesseract-lang uv
+   uv tool install git+https://github.com/takunagai/screenshot-masker
    ```
 
-2. **見落としを目で確かめる。** 検出した範囲を赤枠で囲んだ確認用画像を出し、隠すべき文字が枠の外に残っていないかを見ます。確認用画像は `<出力先>_preview/`（この例では `~/Desktop/masked_preview/`）に出ます
+2. Claude Code にスキルを入れます（Codex は [AI エージェントから使う](docs/AIエージェントから使う.md#codex)）
 
    ```sh
-   uv run screenshot-masker ~/Desktop/screenshots -o ~/Desktop/masked --preview
+   claude plugin marketplace add takunagai/claude-plugins
+   claude plugin install screenshot-masker@takunagai
    ```
 
-3. **見落としがあれば足す。** 決まった形の文字列なら設定ファイルの `[[detect.custom]]` に正規表現を足して 2 からやり直します（[設定ファイル](#設定ファイル)）。形が決まらないものは、指示ファイルの `masks` で範囲を指定して隠します（[注釈を付ける](#注釈を付けるannotate)）
-4. **マスク済み画像を確かめる。** 出力先（この例では `~/Desktop/masked/`）の画像を開き、隠れていることを目で確かめます
-5. **確認用画像を消す。** `<出力先>_preview/` をゴミ箱に入れます。マスク前の文字が残っているため、公開用のフォルダに混ぜたり、記事のリポジトリにコミットしたりしないでください
+3. エージェントに頼みます
 
-## 使い方
+   > `~/blog/images` のスクショを、公開する前に全部マスクして
 
-```sh
-# 1 枚をマスクして masked/ に出力
-uv run screenshot-masker shot.png
+   エージェントはフォルダごと処理してマスク済みの画像を別フォルダに出し、何がいくつ見つかったか（種類と位置だけ）を報告して、確認用画像での目視をあなたに頼みます。
 
-# フォルダごと（サブフォルダの構成を保って出力）。出力先を指定
-uv run screenshot-masker ~/Desktop/screenshots -o ~/Desktop/masked
+## こう頼めます
 
-# 画像を書かずに検出結果だけを見る
-uv run screenshot-masker shot.png --dry-run
-
-# 検出範囲を赤枠で囲んだ確認用画像も出す（<出力先>_preview/ に PNG で保存）
-uv run screenshot-masker shot.png -o masked --preview
-
-# ぼかしではなく塗りつぶし
-uv run screenshot-masker shot.png --method fill
-```
-
-対応する画像は PNG と JPEG（`.png` / `.jpg` / `.jpeg`）です。フォルダを指定したときは、出力先と確認用のフォルダを除いた中の画像をすべて処理します。
-
-### オプション
-
-| オプション | 内容 |
-| --- | --- |
-| `-o, --output DIR` | マスク済み画像の出力先（既定: `masked`） |
-| `-c, --config FILE` | 設定ファイル（TOML） |
-| `--method blur\|fill` | マスク方法（既定: 設定ファイルの値、無ければ `blur`） |
-| `--dry-run` | 画像を書かず、検出結果だけを標準出力に出す |
-| `--preview` | 確認用画像を `<出力先>_preview/` に出す。`--dry-run` とは同時に使えません |
-| `--debug` | エラー時に詳細（トレースバック）を表示する |
-
-> [!WARNING]
-> 確認用画像（`--preview`）にはマスク前の文字がそのまま残ります。公開用のフォルダに混ぜないでください。
-
-### 出力
-
-標準出力に 1 件 1 行、タブ区切りで出します。
-
-```
-shots/shot.png	email	x=130 y=40 w=259 h=30
-shots/shot.png	url	x=100 y=100 w=414 h=30
-```
-
-集計とエラーは標準エラー出力に出します。
-
-### 終了コード
-
-| コード | 意味 |
-| --- | --- |
-| 0 | 検出なし |
-| 1 | 検出あり（マスクした。エラーではない） |
-| 2 | エラー（入力が無い、設定が不正、Tesseract が無い、画像が読めない など） |
-
-複数の画像のうち一部だけ読めなかった場合も、残りは処理したうえで 2 を返します。
-
-シェルスクリプトや `set -e` の中で使うと、検出あり（1）で止まってしまいます。2 だけを失敗として扱うには次のように書きます。
-
-```sh
-uv run screenshot-masker shots -o masked || [ $? -eq 1 ]
-```
-
-## 検出する種類
-
-既定で検出する種類:
-
-| 種類 | 内容 |
-| --- | --- |
-| `claude` | `session_` / `cse_` で始まる英数字列、`claude.ai/code` の URL |
-| `private_key` | 秘密鍵の見出し行 `-----BEGIN … PRIVATE KEY-----`。Tesseract はこの行を罫線として読み飛ばすことが多いため保険の扱いで、鍵の本文の行は `token` として検出します |
-| `connection_string` | `postgres://ユーザー:パスワード@ホスト` のような、認証情報入りの接続文字列 |
-| `url` | `http(s)://`・`www.` で始まるもの、`ドメイン/パス` の形のもの（残してよいドメインを設定可） |
-| `email` | メールアドレス |
-| `aws_arn` | AWS のアカウント ID を含む ARN（`arn:aws:…:123456789012:…`）。ARN の外の 12 桁の数字は対象にしません |
-| `ipv4` | IPv4 アドレス（各値 0〜255 のもの） |
-| `ipv6` | IPv6 アドレス（形式を検証。ループバック `::1` と `::` は除く） |
-| `mac_address` | MAC アドレス（`00:1A:2B:…`・`00-1a-2b-…`） |
-| `home_path` | `/Users/<name>/…`、`/home/<name>/…`、Windows の `C:\Users\<name>\…`（`¥` 区切りも） |
-| `credit_card` | クレジットカード番号（13〜19 桁。Luhn のチェックを満たすもの） |
-| `my_number` | マイナンバー（12 桁。検査用数字を満たすもの） |
-| `jp_phone` | 日本の電話番号（固定・携帯・IP 電話・0120・0800、`+81` の表記も。区切りのない形は携帯・IP 電話の 11 桁だけ） |
-| `jp_postal_code` | 郵便番号（`〒100-0000`、`100-0000`） |
-| `secret_assignment` | `.env` や設定の `PASSWORD=…`・`"api_key": "…"` のような、秘密を表すキーへの代入（値が空・伏せ字・`${…}`・型名のものは除く） |
-| `token` | API キーなどのトークン。GitHub・GitLab・Stripe・Google・AWS・Slack・Hugging Face・npm・PyPI・SendGrid・Vault などの接頭辞を持つもの、JWT、32 文字以上の 16 進列、32 文字以上の base64 らしい列 |
-| （任意） | 設定ファイルで追加した正規表現 |
-
-誤検出が多いため、設定ファイルの `[detect] enabled` で指定したときだけ検出する種類:
-
-| 種類 | 内容 |
-| --- | --- |
-| `uuid` | UUID（アカウント ID などに使われることがあるが、秘密でないものの方が多い） |
-| `jp_passport` | 日本の旅券番号の形（英字 2 文字＋数字 7 桁。型番などとも区別できない） |
-| `jp_pension` | 基礎年金番号の形（`0000-000000`） |
-
-OCR の単語を行単位に組み立ててから照合します。OCR が 1 語を隙間なく分割した場合も連結して照合し、全角の英数字は半角にそろえてから照合します。一致した単語の範囲全体（例: `KEY=sk-…` なら `KEY=` も含む）を、枠より少し広げてマスクします。
-
-住所・氏名は検出しません（正規表現では確実に拾えないため）。法人番号は国税庁が公表している情報なので対象にしていません。必要なものは、設定ファイルで正規表現を足してください。
-
-## 設定ファイル
-
-`-c` で指定するか、次の順に探した最初のファイルを使います（見つからなければ既定値で動きます）。
-
-1. カレントディレクトリの `screenshot-masker.toml`
-2. `~/.config/screenshot-masker/config.toml`
-
-例は [`screenshot-masker.example.toml`](screenshot-masker.example.toml) を参照してください。コピーして使うのが手早い方法です。
-
-```sh
-cp screenshot-masker.example.toml screenshot-masker.toml
-```
-
-```toml
-[ocr]
-lang = "jpn+eng"
-
-[mask]
-method = "blur"        # "blur" か "fill"
-padding = 6            # 文字の枠から広げるピクセル数
-blur_radius = 12       # ぼかしの強さ（文字の高さの半分より小さい値は自動で引き上げ）
-fill_color = "#000000" # 塗りつぶしの色
-
-[detect]
-disabled = ["ipv4"]                      # 無効にする種類
-enabled = ["uuid"]                       # 既定では検出しない種類のうち、有効にするもの
-allowed_domains = ["zenn.dev", "note.com"] # url で残してよいドメイン（サブドメインも含む）
-
-[[detect.custom]]
-name = "project_code"
-pattern = 'PRJ-\d{4}'
-```
-
-- `allowed_domains` は `url` にだけ効きます。`claude.ai/code` の URL は `claude` として別に検出されるため、`claude.ai` を許可しても隠れます（残したい場合は `disabled = ["claude"]`）
-- `[[detect.custom]]` の `pattern` は Python の正規表現です。TOML ではシングルクォートで囲むと `\` をそのまま書けます
-- 知らない項目名や不正な値（`method` の綴り、色の形式、負の数など）はエラーで止まります（綴りの誤りで設定が効かないまま進むのを防ぐため）
-
-## 注釈を付ける（annotate）
-
-記事や操作マニュアル用に、矢印・番号バッジ・枠・ぼかし・短い文字ラベル・スポットライトを、指示ファイル（YAML / JSON）から機械的に描き込みます。見た目の既定値を設定ファイルにまとめれば、何枚でも同じ見た目の注釈を揃えられます。
-
-- 元画像は上書きしません。出力先フォルダの扱い（フォルダ指定でサブフォルダの構成を保つ、元画像と重なる出力先はエラー）は、マスクと同じです
-- `--mask` を付けると、OCR で検出した機密情報をマスクしてから注釈を描きます（マスク → 注釈の順）
-
-```sh
-# 1 枚に注釈を描いて annotated/ に出力
-uv run screenshot-masker annotate shot.png --spec annotate.yaml
-
-# 機密情報をマスクしてから注釈を描く。見た目は記事ごとの設定ファイルから
-uv run screenshot-masker annotate shot.png --spec annotate.yaml --mask -c article.toml -o out
-
-# フォルダごと（すべての画像に同じ指示を適用）
-uv run screenshot-masker annotate ~/Desktop/screenshots --spec annotate.yaml -o ~/Desktop/annotated
-```
-
-### オプション（annotate）
-
-| オプション | 内容 |
-| --- | --- |
-| `-s, --spec FILE` | 指示ファイル（`.yaml` / `.yml` / `.json`）。必須 |
-| `-o, --output DIR` | 出力先（既定: `annotated`） |
-| `-c, --config FILE` | 設定ファイル（TOML）。`[annotate]` に見た目の既定値、`[mask]` に `--mask` の設定 |
-| `--mask` | 注釈の前に、OCR で検出した機密情報をマスクする |
-| `--method blur\|fill` | `--mask` のマスク方法（`--mask` と一緒に指定） |
-| `--scale auto\|数値` | 線の太さなどの倍率（既定: 画像の幅から自動。後述） |
-| `--debug` | エラー時に詳細（トレースバック）を表示する |
-
-終了コードはマスクと同じです（成功 0 / `--mask` で検出あり 1 / エラー 2）。`--mask` のときは、検出結果をマスクと同じ形式で標準出力に出します。
-
-### 例
-
-[`examples/`](examples/) に架空の設定画面・指示ファイル・設定ファイルがあります。
-
-```sh
-uv run screenshot-masker annotate examples/sample.png --spec examples/annotate.yaml -c examples/article.toml
-```
-
-`examples/annotate.yaml`:
-
-```yaml
-masks:                     # 先に処理する（既存のマスクと同じぼかし・塗りつぶし）
-  - {type: blur, box: [640, 120, 260, 36]}     # メールアドレス欄（架空）をぼかす
-  - {type: fill, box: [640, 180, 260, 36]}     # API キー欄（架空）を塗りつぶす
-annotations:               # masks の後に、書いた順に描く
-  - {type: spotlight, box: [40, 100, 560, 160]}
-  - {type: rect, box: [40, 100, 560, 160]}
-  - {type: badge, at: [40, 100]}               # 1
-  - {type: arrow, from: [420, 360], to: [300, 270]}
-  - {type: label, at: [380, 365], text: "ここで「保存」を押します"}
-  - {type: badge, at: [0.95, 0.9], units: ratio}   # 2（割合で指定）
-```
-
-出力（[`examples/sample-annotated.png`](examples/sample-annotated.png)）では、メール欄がぼかされ、API キー欄が黒く塗られ、カードの外側が暗くなり、カードを赤い角丸の枠が囲みます。枠の左上に「1」、右下の隅に「2」の番号バッジが付き、ラベル「ここで「保存」を押します」から保存ボタンへ矢印が伸びます。
-
-![注釈を付けた例](examples/sample-annotated.png)
-
-OCR が見落とした箇所を手で隠すだけなら、`masks` だけを書いた指示ファイルでも使えます（`annotations` は省略できます）。
-
-### 指示ファイルの形
-
-| 最上位の項目 | 内容 |
-| --- | --- |
-| `units` | 座標の単位。`px`（既定）か `ratio`（画像の幅・高さに対する 0〜1 の割合）。各指示の `units` で個別に上書きできます |
-| `scale` | 倍率。`auto`（既定）か数値。`--scale` が優先 |
-| `style` | この画像だけの見た目。その場で書いたマッピングか、YAML / JSON ファイルへのパス（指示ファイルからの相対パス） |
-| `masks` | 先に処理するマスク（`blur` / `fill` のみ） |
-| `annotations` | 注釈。書いた順に重ねて描きます |
-
-範囲は `box: [x, y, 幅, 高さ]`、点は `[x, y]` で書きます。
-
-| type | 位置の項目 | 見た目の項目（既定値を上書き） |
-| --- | --- | --- |
-| `rect` 枠 | `box` | `color`, `width`（太さ）, `radius`（角丸） |
-| `badge` 番号バッジ | `at`（中心）, `number`（省略時 1, 2, 3… と自動） | `color`, `text_color`, `radius`, `font_size`, `outline_color`, `outline_width` |
-| `arrow` 矢印 | `from`, `to`（矢じり側） | `color`, `width`, `head_size`（矢じりの長さ） |
-| `blur` ぼかし | `box` | `radius`（0 以上の整数） |
-| `fill` 塗りつぶし | `box` | `color`（`#RRGGBB`） |
-| `label` 文字ラベル | `at`（背景の左上）, `text`（`\n` で改行。日本語可） | `text_color`, `background`, `font_size`, `padding`, `radius` |
-| `spotlight` スポットライト | `box`（明るく残す範囲） | `color`, `opacity`（0〜1）, `radius` |
-
-- `blur` / `fill` は既存のマスクと同じ処理です（ぼかしはモザイクにしてからぼかし、強さが範囲の高さの半分より小さければ自動で引き上げます）
-- `rect` の線は `box` の外側に描くため、囲んだ中身を隠しません
-- `badge` の `number` に整数を書くと、以降の自動の番号はその続きになります
-- 注釈の色は `#RRGGBB`、`#RRGGBBAA`（半透明）、`red` などの色名で書けます
-- 画像からはみ出した部分は切り取って描きます。綴りの誤りなど不明な項目はエラーにします
-
-処理の順序は「`--mask` の OCR マスク → `masks` → `annotations`」です。`masks` はファイル内で後ろに書いても先に処理します。
-
-### 見た目の既定値（設定ファイルの `[annotate]`）
-
-色・太さ・フォントの既定値を、マスクと同じ設定ファイル（TOML）の `[annotate]` にまとめます。記事ごとにファイルを分けて `-c` で切り替えると、見た目を揃えられます（例: [`examples/article.toml`](examples/article.toml)）。
-
-```toml
-[annotate]
-reference_width = 1600                 # 倍率の基準になる画像の幅
-# font = "/path/to/NotoSansCJK-Bold.ttc" # 省略時は日本語フォントを自動で探す
-
-[annotate.rect]
-color = "#E5484D"
-width = 4
-radius = 6
-
-[annotate.badge]
-color = "#E5484D"
-text_color = "#FFFFFF"
-radius = 16
-font_size = 18
-
-[annotate.arrow]
-color = "#E5484D"
-width = 4
-head_size = 18
-
-[annotate.label]
-background = "#1F2937E6"
-text_color = "#FFFFFF"
-font_size = 18
-padding = 8
-
-[annotate.spotlight]
-color = "#000000"
-opacity = 0.55
-```
-
-`blur` の `radius` と `fill` の `color` の既定値は、`[mask]` の `blur_radius` / `fill_color` を引き継ぎます（`[annotate.blur]` / `[annotate.fill]` で別の値にもできます）。
-
-重なり順: 組み込みの既定値 < 設定ファイル < 指示ファイルの `style` < 各指示に書いた項目
-
-日本語のラベルには日本語フォントが要ります。Noto Sans CJK、IPA ゴシック、ヒラギノ、メイリオなどを自動で探し、見つからなければ注意を表示して既定のフォントで描きます。
-
-### Retina（2 倍）画像の倍率
-
-見た目の長さ（太さ・半径・文字の大きさ・矢じり）は 1 倍の画像での見た目で書き、描画時に倍率を掛けます。倍率は `画像の幅 ÷ reference_width` を四捨五入した整数（最小 1）です。`reference_width = 1600` の場合、幅 2399px 以下は 1 倍、2400〜3999px は 2 倍、4000〜5599px は 3 倍です。自動の判定が合わない画像（スマートフォンの 3 倍画像など）は `--scale 3` か、指示ファイルの `scale: 3` で指定してください。座標（`box` など）は画像の実際のピクセルで書きます。
-
-## AI エージェントから使う
-
-Claude Code や Codex などの AI エージェントにスクリーンショットの処理を任せるときは、エージェントが**マスク前の画像を見ない**ようにしてください。エージェントが画像を開くと、写っている機密情報がモデルへの入力と会話ログに残ります。
-
-- 結果の判断は、標準出力（種類と位置だけ）と終了コードで足ります。画像を開く必要はありません
-- 終了コード `1` は「検出してマスクした」という意味です。失敗として再実行させないでください
-- 画像を目で確かめるのは人間の役目です。マスク済みの画像でも、OCR が見落とした機密はそのまま写っているため、エージェントには必要が無い限り開かせないでください
-
-### スキルを入れる（おすすめ）
-
-この使い方をエージェントに教えるスキル（[`skills/mask-screenshots/SKILL.md`](skills/mask-screenshots/SKILL.md)）を同梱しています。入れておくと、「記事に載せるスクショの個人情報を隠して」のような依頼で自動的に読み込まれ、上の規律に沿って処理します。ツール本体（[導入](#導入)）とは別に入れてください。
-
-**Claude Code**（プラグインとして配布しています。ターミナルで実行）
-
-```sh
-# プラグイン集（マーケットプレイス takunagai）を登録する。最初の 1 回だけ
-claude plugin marketplace add takunagai/claude-plugins
-
-# スキルを入れる
-claude plugin install screenshot-masker@takunagai
-```
-
-| 操作 | コマンド |
-| --- | --- |
-| 更新 | `claude plugin update screenshot-masker@takunagai` |
-| 削除 | `claude plugin uninstall screenshot-masker@takunagai` |
-
-- Claude Code 2.1.292 以降なら、登録とインストールを 1 行で行えます: `claude plugin install screenshot-masker --marketplace takunagai/claude-plugins`（セッションの中では `/plugin install screenshot-masker --marketplace takunagai/claude-plugins`。こちらは 2.1.275 以降）
-- 更新は自動では届きません。`/plugin` の Marketplaces で `takunagai` を選び、自動更新を有効にすることもできます
-- GitHub の SSH 鍵を設定していない場合は、`CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` を環境変数に設定してください（セッションの中からのインストールと更新が HTTPS で行われます）
-**Codex**（スキルのフォルダを `~/.agents/skills/` に置く）
-
-```sh
-git clone https://github.com/takunagai/screenshot-masker.git
-mkdir -p ~/.agents/skills
-cp -R screenshot-masker/skills/mask-screenshots ~/.agents/skills/
-```
-
-スキルが認識されない場合は Codex を再起動してください。更新するときは、`git pull` してから同じ `cp` をやり直します。
-
-### こう頼めます
-
-スキルを入れたら、ふだんの言葉で頼むだけです。コマンドやオプションを覚える必要はありません。
+ふだんの言葉で頼むだけです。コマンドやオプションを覚える必要はありません。
 
 | 頼み方の例 | エージェントがすること |
 | --- | --- |
@@ -455,108 +57,48 @@ cp -R screenshot-masker/skills/mask-screenshots ~/.agents/skills/
 
 最後の例のとおり、頼まれても機密が写った画像は開きません。この振る舞いは同梱の [eval](evals/) で確かめています。
 
-### 画像がエージェントに渡る前に止める（Claude Code のフック・任意）
+## 画像がエージェントに渡る前に止める（任意）
 
-スキルは「開かない」という指示ですが、フックを入れると仕組みとして止められます。Claude Code が画像をモデルに渡す前に `screenshot-masker hook` が OCR で調べ、機密らしい文字列を見つけたら止めます。止めた理由には、ファイル名と検出の種類・件数だけを表示します。
+スキルは「開かない」という指示ですが、Claude Code ではフックを入れると仕組みとして止められます。エージェントが画像ファイルを開くときと、プロンプトに画像のパスを書いて送るときに OCR で調べ、機密らしい文字列を見つけたら止めます。止める代わりに、マスクした写しに差し替えることもできます。
 
-| 画像が渡る経路 | フックの動き |
-| --- | --- |
-| エージェントが画像ファイルを開く（Read） | 検出したら開かせない。`--on-detect mask` を付けると、マスクした写しに差し替えて開かせる |
-| プロンプトに画像のパスや `@画像.png` を書いて送る | 検出したら送信を止める（プロンプトは差し替えられないので、`mask` でも止める）。空白や括弧を含むパス（macOS のスクリーンショットの既定の名前など）は、エスケープしていなくても、直後に「を説明して」のような日本語や句点が続いていても読み取る |
-| クリップボードから貼り付けた画像（Ctrl+V） | **調べられない。** フックの入力に画像が含まれないため |
-| シェルのコマンドや MCP のツールが読む画像 | 対象外 |
+クリップボードから貼り付けた画像と、シェルのコマンドや MCP のツールが読む画像は調べられません。設定のしかたと注意点は [フックで画像を止める](docs/AIエージェントから使う.md#フックで画像を止めるclaude-code) にあります。
 
-使うには、ツール本体（[導入](#導入)）を `uv tool install` で入れて `screenshot-masker` をコマンドとして使える状態にし、Claude Code の設定ファイル（全プロジェクトなら `~/.claude/settings.json`、このプロジェクトだけなら `.claude/settings.json`）に次を加えます。
+## コマンドで使う
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Read",
-        "hooks": [{ "type": "command", "command": "screenshot-masker hook", "timeout": 60 }]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [{ "type": "command", "command": "screenshot-masker hook", "timeout": 60 }]
-      }
-    ]
-  }
-}
+エージェントを使わずに、コマンドで直接マスクすることもできます。
+
+```sh
+# 1 枚をマスクして masked/ に出力
+screenshot-masker shot.png
+
+# フォルダごと。検出範囲を赤枠で囲んだ確認用画像も <出力先>_preview/ に出す
+screenshot-masker ~/Desktop/screenshots -o ~/Desktop/masked --preview
+
+# 画像を書かずに、検出結果（ファイル名・種類・位置）だけを見る
+screenshot-masker shot.png --dry-run
 ```
 
-- 検出したときに止めるのではなくマスクした写しを渡したいときは、Read の方の `command` を `screenshot-masker hook --on-detect mask` にします。差し替えるたびに確認を求めます（権限の規則は差し替えた後のパスで判定されるため、確認しないと、元の画像に掛けた拒否や確認の規則が効かなくなるため）。確認できない非対話モード（`claude -p`）では、止めるのと同じ結果になります。写しは OS の一時フォルダの `screenshot-masker-hook-<利用者 ID>/` に、所有者だけが読める形で置かれます（他の利用者が先に作ったフォルダやシンボリックリンクだった場合は、使わずに止めます）。見落とした機密は写しにもそのまま残ります
-- 画像を調べられないとき（Tesseract が無い、画像を開けない・大きすぎる、設定ファイルが不正、予期しないエラーなど）も止めます
-- 既定では URL も検出するので、開発中の画面のスクショを見せる作業でも止まりやすくなります。止めたくない種類は、設定ファイルの `disabled` に書いて `screenshot-masker hook -c <設定ファイル>` で渡してください
-- 止めたプロンプトの文字列は、Claude Code の仕様でセッションの記録に残ります（画像の中身は送られません）
-- 2026-11-08 に Claude Code 2.1.319 で、プロンプトを止めること・Read を止めること・マスクした写しに差し替えることを、実際に確かめました。Codex には対応していません
+終了コードは、0 が検出なし、1 が検出あり（マスクした。エラーではない）、2 がエラーです。
 
-### スキルを使わない場合
+> [!WARNING]
+> 確認用画像（`--preview`）にはマスク前の文字がそのまま残ります。確認が済んだら消し、公開用のフォルダに混ぜないでください。
 
-記事を書くリポジトリなど、このツールを使う側の指示ファイル（`AGENTS.md` / `CLAUDE.md`）に、次のように書いておくと伝わります。
+見落としを防ぐ手順は [公開までの流れ](docs/使い方.md#公開までの流れ) に、オプションと設定ファイルは [使い方](docs/使い方.md) にまとめています。
 
-```markdown
-## スクリーンショットのマスク（screenshot-masker）
+## ドキュメント
 
-- 公開する画像は `screenshot-masker <画像またはフォルダ> -o <出力先>` でマスクしてから使う
-- マスク前の画像と `*_preview/` の画像は開かない。結果は標準出力（種類・位置）と終了コードで判断する
-- 終了コード: 0 検出なし / 1 検出してマスクした（エラーではない）/ 2 エラー
-- 検出 0 件でも安全とは限らない。公開前に人間が目視で確認する
-```
-
-Claude Code では、設定ファイルで確認用画像の読み取りを禁止できます。このリポジトリでは [`.claude/settings.json`](.claude/settings.json) で設定済みです。ほかのリポジトリでも同じ制限を掛けるには、そのリポジトリの `.claude/settings.json` に次を加えます。
-
-```json
-{
-  "permissions": {
-    "deny": ["Read(//**/*_preview/**)"]
-  }
-}
-```
-
-この設定は Claude Code にだけ効き、スクリプト経由の読み取りなど防げない経路もあります。効く範囲と確認結果は [docs/AIエージェントの読み取り制限.md](docs/AIエージェントの読み取り制限.md) にまとめています。
-
-このリポジトリのコードをエージェントに変更させるときの指示は [AGENTS.md](AGENTS.md) にあります（Claude Code・Codex が自動で読みます）。
-
-## 困ったとき
-
-| 症状 | 対処 |
-| --- | --- |
-| `エラー: Tesseract が見つかりません` | `brew install tesseract tesseract-lang` で入れます |
-| `エラー: Tesseract の実行に失敗しました（言語データ … が入っているか確認してください）` | `tesseract --list-langs` に `jpn` と `eng` があるか確かめます。無ければ `brew install tesseract-lang`。設定ファイルの `[ocr] lang` の綴りも確かめます |
-| `エラー: 出力先が元画像と同じになるため中止しました` | `-o` で元画像と別のフォルダを指定します |
-| `エラー: 処理できる画像（png / jpg）がありません` | 入力のパスと拡張子を確かめます。対応は `.png` / `.jpg` / `.jpeg` だけです |
-| 隠したい文字が検出されない | `--preview` で確かめ、形が決まっていれば `[[detect.custom]]` に正規表現を足します。形が決まらなければ annotate の `masks` で範囲を指定して隠します |
-| 隠さなくてよいものまで隠れる | `url` なら `allowed_domains` に残してよいドメインを足します。種類ごと不要なら `disabled` に書きます |
-| `注意: 日本語フォントが見つからないため…` | 設定ファイルの `[annotate]` の `font` に、日本語フォントのファイルのパスを書きます |
-| スクリプトが検出ありで止まる | 終了コード 1 は検出ありの意味です（[終了コード](#終了コード)） |
-| 原因が分からないエラー | `--debug` を付けて実行すると詳細が表示されます |
+- [使い方](docs/使い方.md) ─ 導入の詳細・公開までの流れ・オプション・出力・終了コード・設定ファイル・機密の扱い
+- [検出する種類](docs/検出する種類.md) ─ 既定で検出するもの・有効にしたときだけ検出するもの・検出しないもの
+- [注釈を付ける](docs/注釈を付ける.md) ─ annotate の指示ファイルと見た目の既定値
+- [AI エージェントから使う](docs/AIエージェントから使う.md) ─ スキルの導入（Claude Code・Codex）・フック・スキルを使わない場合
+- [困ったとき](docs/困ったとき.md) ─ エラーと対処
+- [開発に参加する](CONTRIBUTING.md)
 
 ## 限界
 
 - OCR の精度に依存します。文字が小さい、背景と文字の色が近い、装飾フォントなどは見落とすことがあります。公開前に必ず目視で確認してください（`--preview` が便利です）
 - 照合は行単位です。2 行に折り返した URL などは、片方の行だけが検出されることがあります
-
-## 開発
-
-```sh
-uv sync
-uv run ruff check && uv run ruff format --check
-uv run mypy
-uv run pytest
-```
-
-Tesseract（`jpn+eng`）が入っていない環境では、実際の OCR を使うテスト（`tests/test_ocr_integration.py`）は skip されます。検出ロジック（`src/screenshot_masker/detect.py`）は OCR から切り離した純関数で、単語と位置のリストを入力にテストしています。
-
-同梱のスキルは、Claude Code のプラグインの eval で確かめます（実行のたびにモデルを呼ぶため、プランの利用枠か API の料金を消費します）。
-
-```sh
-claude plugin validate .
-claude plugin eval . --trust-plugin --no-publish
-```
-
-構成・テストの書き方・壊してはいけない性質は [AGENTS.md](AGENTS.md) を、公開範囲と公開前に確認したことは [docs/リポジトリの公開設定.md](docs/リポジトリの公開設定.md) を参照してください。テストや例には、実在のメールアドレスやトークン、実際のスクリーンショットを使わないでください。
+- 住所と氏名は検出しません（正規表現では確実に拾えないため）
 
 ## 免責事項
 
