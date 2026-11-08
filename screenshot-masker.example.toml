@@ -15,8 +15,12 @@ blur_radius = 12
 fill_color = "#000000"
 
 [detect]
-# 無効にする種類: claude, url, email, ipv4, home_path, token, または custom の name
+# 無効にする種類: claude, private_key, connection_string, url, email, aws_arn, ipv4, ipv6,
+# mac_address, home_path, credit_card, my_number, jp_phone, jp_postal_code,
+# secret_assignment, token, または custom の name
 disabled = []
+# 既定では検出しない種類のうち、有効にするもの: uuid, jp_passport, jp_pension
+enabled = []
 # url で残してよいドメイン（サブドメインも含む）
 allowed_domains = ["zenn.dev", "note.com"]
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from screenshot_masker.detect import DEFAULT_KINDS, Rule, build_rules
+from screenshot_masker.detect import DEFAULT_KINDS, OPTIONAL_KINDS, Rule, build_rules
 from screenshot_masker.errors import SpecError
 from screenshot_masker.style import DEFAULT_STYLE, Style, merge_style
 
@@ -24,7 +24,7 @@ DEFAULT_CONFIG_PATHS: tuple[Path, ...] = (
 TOP_LEVEL_KEYS = ("ocr", "mask", "detect", "annotate")
 OCR_KEYS = ("lang",)
 MASK_KEYS = ("method", "padding", "blur_radius", "fill_color")
-DETECT_KEYS = ("disabled", "allowed_domains", "custom")
+DETECT_KEYS = ("disabled", "enabled", "allowed_domains", "custom")
 CUSTOM_KEYS = ("name", "pattern")
 
 
@@ -45,6 +45,8 @@ class Config:
     ocr_lang: str = "jpn+eng"
     mask: MaskSettings = field(default_factory=MaskSettings)
     disabled_kinds: tuple[str, ...] = ()
+    # 既定では検出しない種類（detect.OPTIONAL_KINDS）のうち、有効にするもの
+    enabled_kinds: tuple[str, ...] = ()
     allowed_domains: tuple[str, ...] = ()
     custom_patterns: tuple[tuple[str, str], ...] = ()
     # annotate サブコマンドの見た目の既定値（[annotate] テーブル）
@@ -53,6 +55,7 @@ class Config:
     def rules(self) -> list[Rule]:
         return build_rules(
             disabled_kinds=self.disabled_kinds,
+            enabled_kinds=self.enabled_kinds,
             allowed_domains=self.allowed_domains,
             custom_patterns=self.custom_patterns,
         )
@@ -146,12 +149,24 @@ def parse_config(data: dict[str, Any]) -> Config:
     _reject_unknown_keys(detect_table, DETECT_KEYS, "[detect]")
     custom_patterns = _parse_custom(detect_table)
     disabled = _expect_string_list(detect_table, "disabled", "detect")
-    known_kinds = set(DEFAULT_KINDS) | {name for name, _ in custom_patterns}
+    known_kinds = set(DEFAULT_KINDS) | set(OPTIONAL_KINDS) | {name for name, _ in custom_patterns}
     unknown = sorted(set(disabled) - known_kinds)
     if unknown:
         raise ConfigError(
             f"[detect] disabled に未知の種類があります: {', '.join(unknown)}"
             f"（指定できる種類: {', '.join(sorted(known_kinds))}）"
+        )
+    enabled = _expect_string_list(detect_table, "enabled", "detect")
+    not_optional = sorted(set(enabled) - set(OPTIONAL_KINDS))
+    if not_optional:
+        raise ConfigError(
+            f"[detect] enabled に指定できない種類があります: {', '.join(not_optional)}"
+            f"（指定できる種類: {', '.join(OPTIONAL_KINDS)}。ほかの種類は既定で検出します）"
+        )
+    conflicting = sorted(set(enabled) & set(disabled))
+    if conflicting:
+        raise ConfigError(
+            f"[detect] enabled と disabled の両方に指定されています: {', '.join(conflicting)}"
         )
     mask = _parse_mask(_expect_table(data, "mask"))
     return Config(
@@ -159,6 +174,7 @@ def parse_config(data: dict[str, Any]) -> Config:
         mask=mask,
         annotate_style=_parse_annotate(data, mask),
         disabled_kinds=disabled,
+        enabled_kinds=enabled,
         allowed_domains=_expect_string_list(detect_table, "allowed_domains", "detect"),
         custom_patterns=custom_patterns,
     )

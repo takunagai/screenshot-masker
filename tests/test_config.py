@@ -5,19 +5,13 @@ from pathlib import Path
 import pytest
 
 from screenshot_masker.config import Config, ConfigError, load_config, parse_config
+from screenshot_masker.detect import DEFAULT_KINDS
 
 
 def test_defaults() -> None:
     config = parse_config({})
     assert config == Config()
-    assert [rule.kind for rule in config.rules()] == [
-        "claude",
-        "url",
-        "email",
-        "ipv4",
-        "home_path",
-        "token",
-    ]
+    assert [rule.kind for rule in config.rules()] == list(DEFAULT_KINDS)
 
 
 def test_load_full_config(tmp_path: Path) -> None:
@@ -52,13 +46,21 @@ pattern = 'EMP\\d{6}'
     assert config.mask.padding == 10
     assert config.allowed_domains == ("example.com",)
     assert [rule.kind for rule in config.rules()] == [
-        "claude",
-        "url",
-        "email",
-        "home_path",
-        "token",
+        *(kind for kind in DEFAULT_KINDS if kind != "ipv4"),
         "staff_id",
     ]
+
+
+def test_enabled_optional_kinds() -> None:
+    config = parse_config({"detect": {"enabled": ["uuid", "jp_passport"]}})
+    assert config.enabled_kinds == ("uuid", "jp_passport")
+    assert [rule.kind for rule in config.rules()][-2:] == ["uuid", "jp_passport"]
+
+
+def test_optional_kind_can_be_listed_in_disabled() -> None:
+    # 任意の種類を disabled に書いてもエラーにしない（既定で無効なので結果は変わらない）
+    config = parse_config({"detect": {"disabled": ["uuid"]}})
+    assert "uuid" not in [rule.kind for rule in config.rules()]
 
 
 def test_missing_default_config_returns_defaults(
@@ -83,6 +85,8 @@ def test_missing_default_config_returns_defaults(
         ({"ocr": {"language": "eng"}}, "[ocr] に不明な項目 language"),
         ({"mask": {"colour": "#000000"}}, "[mask] に不明な項目 colour"),
         ({"detect": {"allowed_domain": ["example.com"]}}, "[detect] に不明な項目 allowed_domain"),
+        ({"detect": {"enabled": ["email"]}}, "enabled に指定できない種類があります: email"),
+        ({"detect": {"enabled": ["uuid"], "disabled": ["uuid"]}}, "両方に指定されています: uuid"),
         (
             {"detect": {"custom": [{"name": "x", "pattern": "x", "flags": "i"}]}},
             "1 番目 に不明な項目 flags",

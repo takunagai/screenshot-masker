@@ -43,7 +43,13 @@ screenshot-masker <入力> -o <出力先> --preview
 - ぼかしでなく塗りつぶしにするなら `--method fill`
 - 結果だけ知りたいときは `--dry-run`（画像を書かない。`--preview` とは併用できない）
 
-標準出力は 1 件 1 行、タブ区切り: `パス<TAB>種類<TAB>x=… y=… w=… h=…`。種類は `claude` / `url` / `email` / `ipv4` / `home_path` / `token` か、設定ファイルで足した名前。
+標準出力は 1 件 1 行、タブ区切り: `パス<TAB>種類<TAB>x=… y=… w=… h=…`。種類は次のどれかか、設定ファイルで足した名前。
+
+- 開発者向け: `claude`・`private_key`・`connection_string`・`url`・`email`・`aws_arn`・`ipv4`・`ipv6`・`mac_address`・`home_path`・`secret_assignment`・`token`
+- 日本の個人情報・決済: `my_number`・`jp_phone`・`jp_postal_code`・`credit_card`
+- 設定ファイルの `[detect] enabled` で有効にしたときだけ: `uuid`・`jp_passport`・`jp_pension`
+
+住所・氏名は検出しない。写っていそうなら、人間の目視で確かめるよう特に伝える。
 
 | 終了コード | 意味 | 次にすること |
 | --- | --- | --- |
@@ -69,6 +75,7 @@ screenshot-masker <入力> -o <出力先> --preview
 [detect]
 allowed_domains = ["zenn.dev", "note.com"]   # url で残してよいドメイン（サブドメインを含む）
 disabled = ["ipv4"]                          # 種類ごと検出しない
+enabled = ["uuid"]                           # 既定で無効の種類（uuid・jp_passport・jp_pension）を有効にする
 
 [[detect.custom]]                            # 決まった形の文字列を足す（Python の正規表現）
 name = "project_code"

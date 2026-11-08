@@ -32,7 +32,9 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 - `cli.main` は最初の引数が `annotate` なら `annotate_cli.main` に渡す。`annotate_cli` は `cli` の `plan_jobs`・`_load_image`・`_save_image`・`format_detection`・終了コード定数を再利用するため、`cli` 側では関数内で遅延 import している（循環 import の回避）。`_` 付きの非公開関数（`_load_image`・`_save_image`・`_report_error`）にも依存しているので、`cli` 側でこれらの名前や引数を変えるときは `annotate_cli` も直す
 - `main(argv, ocr=...)` で OCR 関数を差し替えられる。テストはこれでフェイクを渡す
 - `ocr.prepare_for_ocr` はグレースケール化・暗い背景の反転・autocontrast を行う。寸法を変えないので、OCR の座標は元画像の座標としてそのまま使う。`_load_image` は EXIF の向きを先に反映する（座標と保存画像を一致させるため）
-- `detect` は OCR に依存しない純関数。`Word.line_key` で行に組み立て、各行を「空白区切りで連結」と「隙間が行の高さ × `TIGHT_GAP_RATIO` 未満なら詰めて連結」の 2 通りで全ルールと照合する。同じ行で単語集合が既存の候補に含まれるものは捨てる（広い範囲が優先、同じ広さなら `build_rules` の並び順が優先順位）
+- `detect` は OCR に依存しない純関数。`Word.line_key` で行に組み立て、各行を「空白区切りで連結」と「隙間が行の高さ × `TIGHT_GAP_RATIO` 未満なら詰めて連結」の 2 通りで全ルールと照合する。同じ行で単語集合が既存の候補に含まれるものは捨てる（広い範囲が優先、同じ広さなら `build_rules` の並び順が優先順位）。照合の前に全角の英数字・記号を半角にそろえる（1 文字ずつの置き換えなので、文字と単語の位置の対応は崩れない）
+- 種類は `DEFAULT_KINDS`（既定で検出）と `OPTIONAL_KINDS`（設定ファイルの `[detect] enabled` で指定したときだけ）に分かれる。`build_rules` の並びは `DEFAULT_KINDS` と一致させる（テストで確かめている）。誤検出を抑える検証関数（Luhn・マイナンバーの検査用数字・電話番号の桁数と先頭・IPv6 の形式など）は `Rule.validator` に置く
+- 規則を足すときは、OCR の読み違い（ハイフンが長音記号「ー」になる、コロンや数字の途中に空白が入る、`\` が `¥` になる）を `tests/test_ocr_integration.py` の実画像で確かめる
 - 設定は `config.load_config` が `-c`、`./screenshot-masker.toml`、`~/.config/screenshot-masker/config.toml` の順に最初の 1 つだけ読み、frozen dataclass の `Config` にする。`[annotate]` は `style.merge_style` で合成し、`blur.radius` / `fill.color` の既定値は `[mask]` から引き継ぐ
 - スタイルの重なり順: `style.DEFAULT_STYLE` < 設定ファイルの `[annotate]` < 指示ファイルの `style` < 各指示に書いた項目
 - `spec.parse_spec` は `masks` を `annotations` より前に並べる（ファイル内の記述順に関係なく先に処理）。`render.render` は `RENDERERS` の表で種類ごとの描画関数に振り分ける
