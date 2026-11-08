@@ -2,7 +2,7 @@
 
 このリポジトリで作業する AI コーディングエージェント（Claude Code・Codex など）への指示。利用者向けの説明は [README.md](README.md)。
 
-ブログ用スクリーンショットから機密文字列を OCR（Tesseract）で見つけてマスクする CLI と、指示ファイル（YAML / JSON）から注釈を描く `annotate` サブコマンド。Python 3.12・uv・Pillow・pytesseract・PyYAML。
+公開・共有する前のスクリーンショット（ブログ・README・マニュアル・SNS・Issue・資料など）から機密文字列を OCR（Tesseract）で見つけてマスクする CLI と、指示ファイル（YAML / JSON）から注釈を描く `annotate` サブコマンド。Python 3.12・uv・Pillow・pytesseract・PyYAML。
 
 ## コマンド
 
@@ -56,7 +56,7 @@ cli.main ─┬─ マスク:   _load_image → ocr.run_ocr → detect.detect �
 - 検出を伴う CLI テストでは、`assert SECRET not in output.out + output.err` のように、一致した文字列が出力に出ないことも確かめる
 - 注釈は `tests/image_helpers.run` で描き、`changed_box`・`pixel` で画素を検査する
 - テストと `examples/` の値は例示用だけを使う（`example.com`、`192.0.2.0/24` などの文書用アドレス、`sk-test-…` のような架空のトークン）。実在のメールアドレス・トークン・実際のスクリーンショットをリポジトリに入れない
-- `.gitignore` は `examples/*.png` 以外の画像（png / jpg / jpeg）をすべて除外している。説明用の画像を別の場所に足すときは `!` の例外行を足す。`git add -f` で除外を回避しない
+- `.gitignore` は `examples/*.png` と `docs/images/*.png`（README の図）以外の画像（png / jpg / jpeg）をすべて除外している。説明用の画像を別の場所に足すときは `!` の例外行を足す。`git add -f` で除外を回避しない
 
 ## 同梱のスキル（Claude Code プラグイン）
 
