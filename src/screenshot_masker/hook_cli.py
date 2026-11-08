@@ -44,8 +44,10 @@ HOOK_IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp
 # --on-detect mask で作るマスク済みの写しの置き場（OS の一時フォルダの下。名前に利用者 ID を付ける）
 MASKED_COPY_DIR_NAME = "screenshot-masker-hook"
 
-# プロンプト中の画像のパスの終わり（拡張子）。ここから左へ候補を広げて、実在するファイルを探す
-_IMAGE_EXTENSION_PATTERN = re.compile(r"\.(?:png|jpe?g|gif|webp|bmp|tiff?)(?![\w.])", re.IGNORECASE)
+# プロンプト中の画像のパスの終わり（拡張子）。ここから左へ候補を広げて、実在するファイルを探す。
+# 拡張子の直後は判定しない（「shot.pngを説明して」のように日本語や句点が続いても拾うため）。
+# 余計な候補は、ファイルが実在するかどうかで落とす
+_IMAGE_EXTENSION_PATTERN = re.compile(r"\.(?:png|jpe?g|gif|webp|bmp|tiff?)", re.IGNORECASE)
 # パスの始まりになりうる位置の直前の文字（空白は str.isspace で判定するので含めない）
 _PATH_OPENERS = frozenset("\"'「『(（<[@")
 # 候補の先頭から取り除く文字（@ 付きの参照・引用符・括弧）

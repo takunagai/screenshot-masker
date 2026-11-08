@@ -288,6 +288,9 @@ def test_prompt_path_with_escaped_spaces(
         ("Screenshot 2026-11-08 at 10.15.30" + chr(0x202F) + "AM.png", "これ {path}"),
         ("Screenshot (1).png", "見て {path}"),
         ("shot.png", "見て「{path}」を説明して"),
+        ("shot.png", "{path}を説明して"),  # 拡張子の直後に日本語が続く
+        ("shot.png", "これを見て: {path}."),  # 拡張子の直後が句点
+        ("shot.jpeg", "見て {path}"),  # .jpg の途中で切らない
     ],
 )
 def test_prompt_paths_with_spaces_and_brackets(
